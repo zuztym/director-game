@@ -191,6 +191,21 @@ a.btn { text-decoration: none; display: inline-block; }
 .check input { width: 1.3em; height: 1.3em; margin: .05em 0 0; flex: none; accent-color: var(--accent); }
 .check input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .debrief { border-top: 2px dashed #c7dadb; padding-top: .7em; display: grid; gap: .5em; font-size: .93em; line-height: 1.4; }
+.feedback { display: grid; gap: .4em; }
+.feedback label { font-weight: 700; }
+.feedback textarea {
+  font: inherit; font-size: 1em; line-height: 1.4; width: 100%; box-sizing: border-box; resize: vertical; min-height: 4.5em;
+  padding: .5em .7em; border: 1.5px solid #9fb6b8; border-radius: 6px; background: var(--paper); color: var(--ink);
+}
+.feedback textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+/* the save message and the Return button stay pinned to the bottom of the final card */
+.end-actions {
+  --pad: clamp(16px, 2.6cqw, 32px);
+  position: sticky; bottom: calc(-1 * var(--pad)); margin: 0 calc(-1 * var(--pad)) calc(-1 * var(--pad));
+  padding: .7em var(--pad) var(--pad); background: var(--paper);
+  box-shadow: 0 -10px 14px -10px rgba(16,41,43,.25); display: grid; gap: .5em;
+}
+.end-actions:not(:has(:not([hidden]))) { display: none; }
 .status { font-weight: 700; }
 .status.ok { color: var(--ok); }
 .status.bad { color: var(--bad); }
@@ -748,7 +763,7 @@ function summarize(log) {
   return out;
 }
 const r1 = v => Number.isFinite(v) ? v.toFixed(1) : '';
-const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+const csvCell = v => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const csv = rows => rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
 
 const ID_HEAD = ['prolific_pid', 'study_id', 'session_id', 'group', 'order', 'assignment_source'];
@@ -801,19 +816,28 @@ function finish() {
   card.innerHTML = `
     <h2>Finished – thank you!</h2>
     <div class="score"><h3>Your errors</h3><dl>${scoreRows}</dl></div>
+    <div class="feedback">
+      <label for="feedbackBox">Do you have any comments or feedback? This field is not required, but I'd really appreciate any comments.</label>
+      <textarea id="feedbackBox" rows="3" maxlength="2000" spellcheck="true"></textarea>
+    </div>
     <div class="debrief">
       <p><b>About this study.</b> We are studying how people use another person's point of view. In one part, a Director who could not see the objects in slots with a wooden back gave the instructions. In the other part there was no Director, and you followed a rule to ignore the objects in those slots. In some rounds the instruction fitted two objects, one of them in a slot with a wooden back. Comparing the two parts shows whether taking another person's perspective works differently from following a rule that leads to the same answer.</p>
       <p>Please don't share details of the study with others who might take part. If you have questions, email zuzanna.tymieniecka@klu.org.</p>
       <p class="cite">The task is adapted from Dumontheil, I., Apperly, I. A., &amp; Blakemore, S.-J. (2010). Online usage of theory of mind continues to develop in late adolescence. <i>Developmental Science</i>, 13(2), 331–338. In this version the instructions appear as text instead of audio.</p>
     </div>
-    <p class="status" id="saveStatus" role="status" hidden></p>
-    <div class="row end">
-      <button class="btn quiet" id="retrySave" type="button" hidden>Try saving again</button>
-      <a class="btn" id="returnBtn" hidden>Return to Prolific</a>
+    <div class="end-actions">
+      <p class="status" id="saveStatus" role="status" hidden></p>
+      <p class="status bad" id="feedbackStatus" role="status" hidden></p>
+      <div class="row end">
+        <button class="btn quiet" id="retrySave" type="button" hidden>Try saving again</button>
+        <button class="btn" id="returnBtn" type="button" hidden>Return to Prolific</button>
+      </div>
     </div>`;
   overlay.hidden = false;
   card.scrollTop = 0;
   $('retrySave').onclick = upload;
+  $('returnBtn').onclick = returnToProlific;
+  watchComment();
   if (CONFIG.DATAPIPE_EXPERIMENT_ID) upload(); else showReturn();
 }
 function setStatus(text, cls) {
@@ -821,11 +845,69 @@ function setStatus(text, cls) {
 }
 function showReturn() {
   if (!CONFIG.PROLIFIC_COMPLETION_URL) return;
-  const a = $('returnBtn'); a.href = CONFIG.PROLIFIC_COMPLETION_URL; a.hidden = false;
+  $('returnBtn').hidden = false;
 }
-function postFile(filename, data) {
+// ---------- the optional comment ----------
+// The comment saves itself, so it is kept even if the participant closes the tab:
+//   - 1.5 seconds after they stop typing,
+//   - when they click outside the box,
+//   - when the mouse leaves the page (e.g. on its way to the tab's close button),
+//   - when the tab is hidden or closed (best effort: sent with keepalive),
+//   - when they click "Return to Prolific" (waits for the save before leaving).
+// DataPipe never overwrites a file, so every save that has new text goes into a new,
+// numbered file: ..._feedback_1.csv, ..._feedback_2.csv, ... Each one holds the full
+// comment at that moment, so the highest number is the final comment.
+const FB = { version: 0, sentText: '', timer: null, chain: Promise.resolve() };
+function commentText() { const el = $('feedbackBox'); return el ? el.value.trim() : ''; }
+function saveComment(when, keepalive = false) {
+  clearTimeout(FB.timer);
+  const text = commentText();
+  if (!CONFIG.DATAPIPE_EXPERIMENT_ID || !text || text === FB.sentText) return FB.chain;
+  FB.sentText = text;
+  const v = ++FB.version;
+  const file = csv([['trial_type', ...ID_HEAD, 'comment_version', 'saved_when', 'saved_at', 'comment'],
+                    ['feedback', ...idCells(), v, when, new Date().toISOString(), text]]);
+  const send = () => postFile(`${fileBase()}_feedback_${v}.csv`, file, keepalive)
+    .catch(e => { if (FB.sentText === text) FB.sentText = ''; throw e; }); // failed: let the next trigger try again
+  // closing the tab can't wait for earlier saves, so that one is sent straight away
+  const p = keepalive ? send() : FB.chain.catch(() => {}).then(send);
+  FB.chain = p.catch(() => {});
+  return p;
+}
+function watchComment() {
+  const box = $('feedbackBox');
+  box.addEventListener('input', () => { clearTimeout(FB.timer); FB.timer = setTimeout(() => saveComment('typing'), 1500); });
+  box.addEventListener('blur', () => saveComment('left_box'));
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && S.phase === 'done') saveComment('tab_hidden', true); });
+window.addEventListener('pagehide', () => { if (S.phase === 'done') saveComment('tab_closed', true); });
+document.documentElement.addEventListener('mouseleave', () => { if (S.phase === 'done') saveComment('mouse_left_page'); });
+
+let returnTried = false;
+async function returnToProlific() {
+  const b = $('returnBtn');
+  if (CONFIG.DATAPIPE_EXPERIMENT_ID && !returnTried) {
+    b.disabled = true; b.textContent = 'Saving your comment…';
+    try {
+      await Promise.race([
+        (async () => { await FB.chain; await saveComment('return_button'); })(),
+        new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 10000)),
+      ]);
+    } catch (e) {
+      returnTried = true;
+      b.disabled = false; b.textContent = 'Return to Prolific';
+      const st = $('feedbackStatus'); st.hidden = false;
+      st.textContent = 'Your comment could not be saved. Click “Return to Prolific” again to finish.';
+      return;
+    }
+  }
+  location.href = CONFIG.PROLIFIC_COMPLETION_URL;
+}
+// file names use Prolific's session ID when present, plus the start time
+const fileBase = () => 'director_' + (PROLIFIC.session ? PROLIFIC.session.replace(/[^\w-]+/g, '_') + '_' : '') + S.startedAt.replace(/[:.]/g, '-');
+function postFile(filename, data, keepalive = false) {
   return fetch('https://pipe.jspsych.org/api/data/', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: '*/*' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: '*/*' }, keepalive,
     body: JSON.stringify({ experimentID: CONFIG.DATAPIPE_EXPERIMENT_ID, filename, data }),
   }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); });
 }
@@ -833,8 +915,7 @@ const uploaded = {};
 async function upload() {
   $('retrySave').hidden = true;
   setStatus('Saving your responses… please don’t close this page.');
-  // file names use Prolific's session ID when present, plus the start time
-  const base = 'director_' + (PROLIFIC.session ? PROLIFIC.session.replace(/[^\w-]+/g, '_') + '_' : '') + S.startedAt.replace(/[:.]/g, '-');
+  const base = fileBase();
   const files = { [base + '_summary.csv']: OUT.summaryCsv, [base + '_trials.csv']: OUT.trialCsv };
   try {
     for (const [name, text] of Object.entries(files)) if (!uploaded[name]) { await postFile(name, text); uploaded[name] = true; }
