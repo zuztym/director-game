@@ -1,0 +1,893 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Shelf Game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: one fixed-ratio room scene (shelf left of centre, Director on the right, hidden in
+   the No-Director part), with instruction cards laid over it.
+   Single deliberate look (the room), so colours are set explicitly for both host themes. */
+:root {
+  --wall: #55c3c2;
+  --wall-side: #49b4b4;
+  --floor: #bcdfe0;
+  --line: #163638;
+  --frame: #a7acaf;
+  --frame-hi: #c9cdcf;
+  --frame-lo: #868b8f;
+  --back: #6d7377;
+  --ink-line: #2a211b;
+  --wood-front: #e6c189;
+  --wood-top: #f3dba9;
+  --wood-side: #c69353;
+  --wood-inner: #b78446;
+  --wood-floor: #ddb577;
+  --wood-grain: rgba(122,74,28,.3);
+  --wood-back: #cc9d60;
+  --sweater: #d9a23b;
+  --sweater-shade: #b6832b;
+  --trousers-shade: #2f3c5f;
+  --skin-shade: #dfaa84;
+  --hair-shade: #4e3019;
+  --shoe: #4a3426;
+  --ink: #15292b;
+  --muted: #4b6366;
+  --paper: #ffffff;
+  --paper-2: #eef6f6;
+  --accent: #e3602b;
+  --ok: #23874d;
+  --bad: #c0392f;
+  --red: #d81f26;
+  --shirt: #d6a23a;
+  --trousers: #3e4f7a;
+  --skin: #f1c9a5;
+  --hair: #6b4423;
+  --f-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  color-scheme: light;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: #10292b; color: var(--ink); font-family: var(--f-body); font-size: 16px; }
+.app {
+  min-height: 100%; display: grid; place-items: center;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+
+/* ---------- scene ---------- */
+.stage {
+  --shw: 34cqw;              /* shelf width */
+  container-type: inline-size; container-name: stage;
+  position: relative; overflow: hidden;
+  width: min(100%, calc((100dvh - 24px) * 1.6));
+  aspect-ratio: 16 / 10; border-radius: 6px;
+  background: var(--wall); user-select: none; -webkit-user-select: none;
+}
+.room { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hud {
+  position: absolute; left: 1.6cqw; top: 1.6cqw; z-index: 3;
+  font-family: var(--f-display); font-weight: 600; font-size: max(12px, 1.5cqw);
+  color: var(--ink); background: rgba(255,255,255,.72); padding: .35em .8em; border-radius: 99px;
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+}
+.shelf-wrap { position: absolute; left: 29cqw; top: 33%; width: var(--shw); aspect-ratio: 1; }
+/* the drawn shelf (SVG) extends past the front face for the top, the right side and the shadow */
+.shelf-art { position: absolute; left: -3%; top: -6%; width: 112%; height: 110%; overflow: visible; }
+.shelf-art .ink { fill: none; stroke: var(--ink-line); stroke-width: 1.6px; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.shelf-art .ink.thin { stroke-width: 1px; }
+.shelf-art .grain { fill: none; stroke: var(--wood-grain); stroke-width: 1px; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.shelf-art .back { fill: transparent; }
+.shelf-art .back.closed { fill: url(#woodBack); }
+.shelf { position: absolute; inset: 0; }
+.slot {
+  position: absolute; box-sizing: border-box; display: flex; align-items: flex-end; justify-content: center;
+  outline: 0 solid transparent; transition: outline-color .12s;
+}
+.slot.drop { outline: .35cqw dashed var(--accent); outline-offset: -.5cqw; }
+.obj {
+  font-family: var(--f-emoji); line-height: 1;
+  font-size: calc(var(--shw) * .14 * var(--s));
+  touch-action: none; position: relative; z-index: 1;
+  filter: drop-shadow(0 .25cqw .15cqw rgba(0,0,0,.25));
+}
+.can-move .obj { cursor: grab; }
+.obj.lifting { opacity: .25; }
+.obj.selected { filter: drop-shadow(0 0 .5cqw var(--accent)) drop-shadow(0 0 .2cqw var(--accent)); }
+.ghost {
+  position: absolute; z-index: 20; pointer-events: none; transform: translate(-50%, -60%);
+  font-family: var(--f-emoji); line-height: 1; font-size: calc(var(--shw) * .14 * var(--s));
+  filter: drop-shadow(0 .8cqw .6cqw rgba(0,0,0,.3));
+}
+.objs-out .obj { opacity: 0; transition: opacity .2s; }
+
+/* Director */
+.director { position: absolute; left: 73cqw; top: 9%; height: 66%; aspect-ratio: 100 / 260; }
+.director .director-art { width: 100%; height: 100%; display: block; overflow: visible; }
+.stage.nodir .director .director-art { visibility: hidden; }
+/* the speech button sits right by the Director's head, its tail pointing at his face */
+.ask {
+  position: absolute; left: 58%; top: -1.5%; width: max(44px, 6cqw); aspect-ratio: 1;
+  border: 0; background: none; cursor: pointer; padding: 0; border-radius: 50%;
+}
+.ask svg { width: 100%; height: 100%; display: block; overflow: visible; transform-origin: 12% 92%; }
+.ask:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.ask:disabled { cursor: default; opacity: .5; }
+.ask.waiting svg { animation: talk 1.2s ease-in-out infinite; }
+.ask.waiting .balloon { fill: #fff4dc; }
+@keyframes talk { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+
+.bubble {
+  --b: max(2px, .22cqw);
+  position: absolute; left: 51cqw; top: 15%; width: 24cqw; box-sizing: border-box; z-index: 4;
+  background: var(--paper); color: var(--ink); border: var(--b) solid var(--ink-line); border-radius: 1.4cqw; padding: 1.1cqw 1.5cqw;
+  font-size: max(14px, 1.95cqw); line-height: 1.3; box-shadow: 0 .5cqw 1.4cqw rgba(0,0,0,.18);
+}
+/* tail pointing at the Director's mouth: an ink triangle with a white one inside */
+.bubble::before, .bubble::after { content: ""; position: absolute; border-style: solid; border-right-width: 0; }
+.bubble::before {
+  right: calc(-1 * var(--b) - 3cqw); top: 2.5cqw;
+  border-width: 1.2cqw 0 1.2cqw 3cqw; border-color: transparent transparent transparent var(--ink-line);
+}
+.bubble::after {
+  right: -2.3cqw; top: calc(2.5cqw + .42cqw);
+  border-width: .8cqw 0 .8cqw 2.3cqw; border-color: transparent transparent transparent var(--paper);
+}
+.stage.nodir .bubble::before, .stage.nodir .bubble::after { display: none; }
+.toast {
+  position: absolute; left: 50%; bottom: 4%; transform: translateX(-50%); z-index: 6;
+  font-family: var(--f-display); font-weight: 600; font-size: max(15px, 2.2cqw);
+  background: var(--ok); color: #fff; padding: .4em 1.1em; border-radius: 99px;
+}
+
+/* overlay cards */
+.overlay {
+  position: absolute; inset: 0; z-index: 10; display: grid; place-items: center;
+  background: rgba(16,41,43,.28); padding: 3cqw; box-sizing: border-box;
+}
+.card {
+  background: var(--paper); color: var(--ink); width: min(100%, 60ch); max-height: 100%;
+  overflow: auto; box-sizing: border-box; padding: clamp(16px, 2.6cqw, 32px);
+  border-radius: 10px; box-shadow: 0 1cqw 3cqw rgba(0,0,0,.25);
+  display: flex; flex-direction: column; gap: .8em; font-size: clamp(14px, 1.6cqw, 18px); line-height: 1.45;
+}
+.card h1, .card h2 {
+  font-family: var(--f-display); font-weight: 600; margin: 0; line-height: 1.1; text-wrap: balance;
+}
+.card h1 { font-size: clamp(24px, 3.4cqw, 40px); }
+.card h2 { font-size: clamp(20px, 2.6cqw, 30px); }
+.card p { margin: 0; }
+.card .eyebrow { font-size: .78em; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); font-weight: 700; }
+.card ul { margin: 0; padding-left: 1.2em; display: grid; gap: .35em; }
+.card .grey-chip {
+  display: inline-block; width: 1em; height: 1em; background: var(--wood-back); vertical-align: -.14em;
+  border-radius: 2px; border: 1.5px solid var(--ink-line); box-sizing: border-box;
+}
+.card .row { display: flex; flex-wrap: wrap; gap: .8em; align-items: end; justify-content: space-between; }
+.btn {
+  font-family: var(--f-display); font-weight: 600; font-size: 1.05em; border: 0; border-radius: 99px;
+  background: var(--accent); color: #fff; padding: .6em 1.4em; cursor: pointer;
+}
+.btn.quiet { background: var(--paper-2); color: var(--ink); }
+.btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.fb-bad { color: var(--bad); }
+.red { color: var(--red); font-weight: 700; }
+.cite { font-size: .85em; color: var(--muted); }
+a.btn { text-decoration: none; display: inline-block; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.consent-text {
+  border: 1.5px solid #c7dadb; border-radius: 8px; background: var(--paper-2);
+  padding: .2em 1em; max-height: 46vh; overflow: auto; display: grid; gap: .6em; padding-block: .8em;
+}
+.consent-text p { font-size: .95em; }
+.check { display: flex; gap: .7em; align-items: flex-start; font-weight: 700; cursor: pointer; line-height: 1.35; }
+.check input { width: 1.3em; height: 1.3em; margin: .05em 0 0; flex: none; accent-color: var(--accent); }
+.check input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.debrief { border-top: 2px dashed #c7dadb; padding-top: .7em; display: grid; gap: .5em; font-size: .93em; line-height: 1.4; }
+.status { font-weight: 700; }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--bad); }
+.row.end { justify-content: flex-start; }
+.score { background: var(--paper-2); border-radius: 8px; padding: .8em 1em; display: grid; gap: .5em; }
+.score h3 { margin: 0; font-family: var(--f-display); font-weight: 600; font-size: 1.05em; }
+.score dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: .35em 1.2em; }
+.score dt { margin: 0; }
+.score dd { margin: 0; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* phones held upright: taller room */
+@media (max-aspect-ratio: 1/1) {
+  .stage { --shw: 60cqw; aspect-ratio: 4 / 5; width: min(100%, calc((100dvh - 24px) * .8)); }
+  .shelf-wrap { left: 5cqw; top: 44%; }
+  .director { left: 74cqw; top: 24%; height: 44%; }
+  .ask { left: 52%; top: -5%; width: 44px; }
+  .bubble { left: 4cqw; top: 20%; width: 62cqw; padding: 3cqw 3.5cqw; border-radius: 3cqw; font-size: max(15px, 4.2cqw); }
+  .bubble::before { right: calc(-1 * var(--b) - 4cqw); top: 9cqw; border-width: 2.2cqw 0 2.2cqw 4cqw; }
+  .bubble::after { right: -3cqw; top: calc(9cqw + .75cqw); border-width: 1.45cqw 0 1.45cqw 3cqw; }
+  .hud { font-size: 13px; left: 3cqw; top: 3cqw; }
+  .card { font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask.waiting svg { animation: none; }
+  .objs-out .obj, .slot { transition: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage" id="stage">
+    <svg class="room" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <rect x="0" y="0" width="100" height="100" fill="var(--wall)"/>
+      <polygon points="0,0 34,0 34,62 0,92" fill="var(--wall-side)"/>
+      <polygon points="0,92 34,62 100,62 100,100 0,100" fill="var(--floor)"/>
+      <polyline points="34,0 34,62 100,62" fill="none" stroke="var(--line)" stroke-width=".25" vector-effect="non-scaling-stroke"/>
+      <line x1="34" y1="62" x2="0" y2="92" stroke="var(--line)" stroke-width=".25" vector-effect="non-scaling-stroke"/>
+    </svg>
+
+    <div class="hud" id="hud" hidden></div>
+
+    <div class="shelf-wrap"><svg class="shelf-art" id="shelfArt" viewBox="-3 -6 112 110" preserveAspectRatio="none" aria-hidden="true"></svg><div class="shelf" id="shelf" aria-label="Shelves"></div></div>
+
+    <div class="director">
+      <svg viewBox="0 0 100 260" role="img" aria-label="The Director" class="director-art">
+        <g stroke="var(--ink-line)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round">
+          <ellipse cx="50" cy="250" rx="31" ry="4.2" fill="rgba(20,40,40,.18)" stroke="none"/>
+          <!-- shoes -->
+          <path d="M29 236 L46 236 L47 244 Q47 249 42 249 L22 249 Q18.5 249 19.5 245 Q21.5 240 29 238.5 Z" fill="var(--shoe)"/>
+          <path d="M54 236 L71 236 L71 238.5 Q78.5 240 80.5 245 Q81.5 249 78 249 L58 249 Q53 249 53 244 Z" fill="var(--shoe)"/>
+          <path d="M21 246.5 L46.5 246.5 M53.5 246.5 L79 246.5" fill="none" stroke-width=".8" opacity=".6"/>
+          <!-- trousers -->
+          <path d="M27 143 L73 143 L72.5 196 L71.5 238 L54 238 L51 162 L49 162 L46 238 L28.5 238 L27.5 196 Z" fill="var(--trousers)"/>
+          <path d="M60 150 Q67 150 72.8 152 L72.5 196 L71.5 238 L63 238 Q66 190 60 150 Z" fill="var(--trousers-shade)" stroke="none"/>
+          <path d="M37.5 168 L37 234 M62.5 168 L63 234" fill="none" stroke-width=".8" opacity=".45"/>
+          <path d="M31 147 Q34 156 40 157 M69 147 Q66 156 60 157" fill="none" stroke-width=".9"/>
+          <path d="M28.5 233 L46.2 233 M53.8 233 L71.5 233" fill="none" stroke-width=".8" opacity=".55"/>
+          <!-- belt -->
+          <rect x="26.5" y="139.5" width="47" height="6" rx="1" fill="#5b3b22"/>
+          <rect x="46.5" y="139" width="7" height="7" rx="1" fill="#d9c27a" stroke-width="1"/>
+          <!-- sleeves and hands -->
+          <path d="M28 71 C20 73 17.5 82 16.8 95 L12.5 152 L22 153.5 L25.8 106 L28.5 88 Z" fill="var(--sweater)"/>
+          <path d="M72 71 C80 73 82.5 82 83.2 95 L87.5 152 L78 153.5 L74.2 106 L71.5 88 Z" fill="var(--sweater)"/>
+          <path d="M76 75 C80.5 78 82 85 82.9 96 L86.9 149 L81 149.6 Q80 104 76 75 Z" fill="var(--sweater-shade)" stroke="none"/>
+          <path d="M12.7 148 L22.4 149.3 L22 154 L12.2 152.6 Z M87.3 148 L77.6 149.3 L78 154 L87.8 152.6 Z" fill="var(--sweater-shade)"/>
+          <path d="M12.3 153 Q10.5 160 13 164.5 Q16 168 20 165.5 Q23 161 22.1 154 Z" fill="var(--skin)"/>
+          <path d="M87.7 153 Q89.5 160 87 164.5 Q84 168 80 165.5 Q77 161 77.9 154 Z" fill="var(--skin)"/>
+          <path d="M15 162.5 L16 166 M17.9 162.8 L18.5 166.3 M85 162.5 L84 166 M82.1 162.8 L81.5 166.3" fill="none" stroke-width=".8"/>
+          <!-- sweater body -->
+          <path d="M28 70 Q50 62 72 70 L76.5 100 L74 142 L26 142 L23.5 100 Z" fill="var(--sweater)"/>
+          <path d="M62 67.5 Q68 68.5 72 70 L76.5 100 L74 134 L65 134 Q69 98 62 67.5 Z" fill="var(--sweater-shade)" stroke="none"/>
+          <path d="M26.4 133.5 L73.6 133.5 L74 142 L26 142 Z" fill="var(--sweater-shade)"/>
+          <path d="M31 134 L31 141.6 M36 134 L36 141.8 M41 134 L41 141.9 M46 134 L46 142 M51 134 L51 142 M56 134 L56 142 M61 134 L61 141.9 M66 134 L66 141.8 M71 134 L71 141.6" fill="none" stroke-width=".7" opacity=".5"/>
+          <path d="M34 92 Q38 96 36 108 M58 100 Q63 106 62 118" fill="none" stroke-width=".8" opacity=".45"/>
+          <!-- neck and collar -->
+          <path d="M44.5 55 L44.5 66 Q50 70 55.5 66 L55.5 55 Z" fill="var(--skin)"/>
+          <path d="M44.5 58 Q50 63 55.5 58 L55.5 62 Q50 66 44.5 62 Z" fill="var(--skin-shade)" stroke="none"/>
+          <path d="M41 65.5 L50 74 L59 65.5 L56.5 63.5 L50 69.5 L43.5 63.5 Z" fill="#f6f3ea"/>
+          <!-- ears -->
+          <ellipse cx="35.6" cy="42" rx="3.2" ry="5" fill="var(--skin)"/>
+          <ellipse cx="64.4" cy="42" rx="3.2" ry="5" fill="var(--skin-shade)"/>
+          <!-- face -->
+          <path d="M36 33 C36 20 64 20 64 33 L64 44 C64 54 57.5 60 50 60 C42.5 60 36 54 36 44 Z" fill="var(--skin)"/>
+          <path d="M57 26 C62 28 64 31 64 36 L64 44 C64 52 59.5 57.5 54 59.3 C59 54 60.5 46 57 26 Z" fill="var(--skin-shade)" stroke="none"/>
+          <!-- hair -->
+          <path d="M34.3 39 C31 23 39.5 13 51 13.5 C62.5 13 70 21.5 65.8 39 C64.5 32 61.5 27.5 55.5 26.5 C51.5 29.5 44 30.5 38.5 29 C36.5 31.5 35 35 34.3 39 Z" fill="var(--hair)"/>
+          <path d="M55.5 26.5 C61.5 27.5 64.5 32 65.8 39 C68 28 64 19 57 16 C60 20 59 24 55.5 26.5 Z" fill="var(--hair-shade)" stroke="none"/>
+          <path d="M42 18.5 Q47 21 50 27 M50 15.5 Q55 19 56 25" fill="none" stroke-width=".8" opacity=".6"/>
+          <!-- eyebrows, eyes, nose, mouth -->
+          <path d="M40.5 35.3 Q44 33.6 47 35 M53 35 Q56 33.6 59.5 35.3" fill="none" stroke-width="1.4"/>
+          <ellipse cx="44" cy="40.6" rx="2.9" ry="2.2" fill="#fff" stroke-width="1"/>
+          <ellipse cx="56" cy="40.6" rx="2.9" ry="2.2" fill="#fff" stroke-width="1"/>
+          <circle cx="44.6" cy="40.8" r="1.35" fill="#3d5c7a" stroke="none"/>
+          <circle cx="56.6" cy="40.8" r="1.35" fill="#3d5c7a" stroke="none"/>
+          <circle cx="44.6" cy="40.8" r=".6" fill="var(--ink-line)" stroke="none"/>
+          <circle cx="56.6" cy="40.8" r=".6" fill="var(--ink-line)" stroke="none"/>
+          <path d="M50.5 42.5 Q48.6 47.5 51.6 48.4" fill="none" stroke-width="1"/>
+          <path d="M45.3 52.4 Q50 56.4 55 52.4" fill="none" stroke-width="1.3"/>
+          <ellipse cx="41" cy="48" rx="2.2" ry="1.2" fill="rgba(226,110,95,.28)" stroke="none"/>
+          <ellipse cx="59" cy="48" rx="2.2" ry="1.2" fill="rgba(226,110,95,.28)" stroke="none"/>
+        </g>
+      </svg>
+      <button class="ask" id="ask" type="button" aria-label="Show the Director's instruction" disabled>
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path class="balloon" d="M26 4C36.5 4 45 11.2 45 20S36.5 36 26 36c-2.4 0-4.6-.4-6.7-1L6 44l6-12.5C8.9 28.6 7 24.5 7 20 7 11.2 15.5 4 26 4z" fill="#fff" stroke="#2a211b" stroke-width="2.4" stroke-linejoin="round"/><text x="26" y="27.5" text-anchor="middle" font-family="Fredoka, Trebuchet MS, sans-serif" font-weight="600" font-size="21" fill="#2a211b">?</text></svg>
+      </button>
+    </div>
+
+    <div class="bubble" id="bubble" role="status" aria-live="polite" hidden></div>
+    <div class="toast" id="toast" hidden></div>
+
+    <div class="overlay" id="overlay">
+      <div class="card" id="card"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ===========================================================================
+// THE DIRECTOR GAME – two-part study (Director + No-Director), counterbalanced.
+//
+// Every participant does both conditions, one after the other:
+//   director    – a Director stands behind the shelves. He can't see objects in
+//                 closed slots (wooden back), so his instructions only refer to objects he can see.
+//   nodirector  – no Director. Participants are told that the instructions only
+//                 refer to objects in open slots and to ignore the closed ones.
+// There are two matched trial sets, A and B (30 rounds each: 10 critical,
+// 20 control). Each participant gets one set per condition, never the same set
+// twice. Each condition has its own 3-round practice (the last round is
+// critical); a practice round repeats until it is done correctly.
+//
+// Four groups (2 x 2 counterbalancing of order and set assignment):
+//   group 1: part 1 director   + set A, part 2 nodirector + set B
+//   group 2: part 1 director   + set B, part 2 nodirector + set A
+//   group 3: part 1 nodirector + set B, part 2 director   + set A
+//   group 4: part 1 nodirector + set A, part 2 director   + set B
+// How the group is chosen (first that applies):
+//   1. a GROUP=1..4 parameter in the link (for testing or top-up studies);
+//   2. DataPipe's condition assignment (turn it on with 4 conditions), which
+//      hands out 0,1,2,3,0,1,2,3,... in arrival order;
+//   3. otherwise (or if DataPipe can't be reached) a random group.
+// Within each part the 30 rounds are shuffled for every participant: the first
+// two are always control rounds and there are never 3 critical rounds in a row.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// ONLINE STUDY SETTINGS (fill these in before running on Prolific)
+// ---------------------------------------------------------------------------
+const CONFIG = {
+  // Experiment ID from pipe.jspsych.org (DataPipe). Use a NEW DataPipe experiment
+  // for this study, not the maze one. When set, every finished session is
+  // uploaded as two CSV files (summary + trials). Leave '' to skip.
+  DATAPIPE_EXPERIMENT_ID: 'L0bebEhftKPg',
+  // Ask DataPipe for a balanced group (needs condition assignment turned on in
+  // the DataPipe dashboard with 4 conditions).
+  USE_DATAPIPE_CONDITIONS: true,
+  // Completion URL copied from this study's Prolific settings (ends in ?cc=CODE).
+  PROLIFIC_COMPLETION_URL: 'https://app.prolific.com/submissions/complete?cc=C18184NI',
+  // Optional: completion URL for people who do NOT consent ("Request a return").
+  PROLIFIC_NO_CONSENT_URL: '',
+};
+// Prolific adds these to the study link when you tick "URL parameters".
+const URLP = new URLSearchParams(location.search);
+const PROLIFIC = { pid: URLP.get('PROLIFIC_PID') || '', study: URLP.get('STUDY_ID') || '', session: URLP.get('SESSION_ID') || '' };
+
+const GROUPS = {
+  1: [{ condition: 'director', set: 'A' }, { condition: 'nodirector', set: 'B' }],
+  2: [{ condition: 'director', set: 'B' }, { condition: 'nodirector', set: 'A' }],
+  3: [{ condition: 'nodirector', set: 'B' }, { condition: 'director', set: 'A' }],
+  4: [{ condition: 'nodirector', set: 'A' }, { condition: 'director', set: 'B' }],
+};
+
+const DATA = {"practice":{"director":[{"id":"DP1","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the tractor one slot to the right.","occluded":[3,7,9,11,14],"objects":[{"id":"tractor-1","name":"tractor","e":"🚜","scale":0.85,"slot":0,"role":"target"},{"id":"camera-0","name":"camera","e":"📷","scale":0.88,"slot":11,"role":"filler"},{"id":"magnet-0","name":"magnet","e":"🧲","scale":0.84,"slot":14,"role":"filler"},{"id":"owl-0","name":"owl","e":"🦉","scale":0.87,"slot":7,"role":"filler"},{"id":"telephone-0","name":"telephone","e":"☎️","scale":0.84,"slot":12,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.82,"slot":6,"role":"filler"},{"id":"light-bulb-0","name":"light bulb","e":"💡","scale":0.87,"slot":15,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.84,"slot":4,"role":"filler"}],"target":"tractor-1","distractor":null,"dir":"right","from":0,"to":1},{"id":"DP2","type":"control","kind":"size","adj":"big","variant":"matched","instruction":"Move the big ball one slot down.","occluded":[2,5,6,7,15],"objects":[{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.95,"slot":7,"role":"replaced"},{"id":"ball-2","name":"ball","e":"🏀","scale":0.75,"slot":8,"role":"target"},{"id":"ball-3","name":"ball","e":"🏀","scale":0.5,"slot":0,"role":"family"},{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.82,"slot":15,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.94,"slot":11,"role":"filler"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.81,"slot":1,"role":"filler"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.84,"slot":14,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.92,"slot":3,"role":"filler"}],"target":"ball-2","distractor":null,"dir":"down","from":8,"to":12},{"id":"DP3","type":"critical","kind":"size","adj":"small","variant":"critical","instruction":"Move the small car one slot to the left.","occluded":[0,4,5,14,15],"objects":[{"id":"car-1","name":"car","e":"🚗","scale":0.5,"slot":14,"role":"competitor"},{"id":"car-2","name":"car","e":"🚗","scale":0.75,"slot":7,"role":"target"},{"id":"car-3","name":"car","e":"🚗","scale":1,"slot":8,"role":"family"},{"id":"crown-0","name":"crown","e":"👑","scale":0.87,"slot":15,"role":"filler"},{"id":"paintbrush-0","name":"paintbrush","e":"🖌️","scale":0.87,"slot":10,"role":"filler"},{"id":"drum-0","name":"drum","e":"🥁","scale":0.86,"slot":11,"role":"filler"},{"id":"telephone-0","name":"telephone","e":"☎️","scale":0.94,"slot":3,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.92,"slot":12,"role":"filler"}],"target":"car-2","distractor":"car-1","dir":"left","from":7,"to":6}],"nodirector":[{"id":"NP1","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the magnet one slot up.","occluded":[1,7,12,13,15],"objects":[{"id":"magnet-1","name":"magnet","e":"🧲","scale":0.85,"slot":6,"role":"target"},{"id":"banana-0","name":"banana","e":"🍌","scale":0.92,"slot":12,"role":"filler"},{"id":"crown-0","name":"crown","e":"👑","scale":0.86,"slot":15,"role":"filler"},{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.87,"slot":11,"role":"filler"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.89,"slot":10,"role":"filler"},{"id":"bicycle-0","name":"bicycle","e":"🚲","scale":0.91,"slot":3,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.84,"slot":5,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.86,"slot":0,"role":"filler"}],"target":"magnet-1","distractor":null,"dir":"up","from":6,"to":2},{"id":"NP2","type":"control","kind":"size","adj":"small","variant":"matched","instruction":"Move the small star one slot to the left.","occluded":[0,5,8,11,14],"objects":[{"id":"dice-0","name":"dice","e":"🎲","scale":0.85,"slot":14,"role":"replaced"},{"id":"star-2","name":"star","e":"⭐","scale":0.75,"slot":7,"role":"target"},{"id":"star-3","name":"star","e":"⭐","scale":1,"slot":13,"role":"family"},{"id":"aeroplane-0","name":"aeroplane","e":"✈️","scale":0.95,"slot":0,"role":"filler"},{"id":"panda-0","name":"panda","e":"🐼","scale":0.82,"slot":11,"role":"filler"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.94,"slot":4,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.94,"slot":9,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.82,"slot":2,"role":"filler"}],"target":"star-2","distractor":null,"dir":"left","from":7,"to":6},{"id":"NP3","type":"critical","kind":"size","adj":"big","variant":"critical","instruction":"Move the big bus one slot to the right.","occluded":[0,2,3,13,14],"objects":[{"id":"bus-1","name":"bus","e":"🚌","scale":1,"slot":0,"role":"competitor"},{"id":"bus-2","name":"bus","e":"🚌","scale":0.75,"slot":10,"role":"target"},{"id":"bus-3","name":"bus","e":"🚌","scale":0.5,"slot":6,"role":"family"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.88,"slot":3,"role":"filler"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.89,"slot":7,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.87,"slot":5,"role":"filler"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.89,"slot":12,"role":"filler"},{"id":"pencil-0","name":"pencil","e":"✏️","scale":0.93,"slot":4,"role":"filler"}],"target":"bus-2","distractor":"bus-1","dir":"right","from":10,"to":11}]},"sets":{"A":[{"id":"A01","type":"critical","kind":"size","adj":"small","variant":"critical","instruction":"Move the small cactus one slot to the left.","occluded":[3,5,6,7,10],"objects":[{"id":"cactus-1","name":"cactus","e":"🌵","scale":0.5,"slot":7,"role":"competitor"},{"id":"cactus-2","name":"cactus","e":"🌵","scale":0.75,"slot":9,"role":"target"},{"id":"cactus-3","name":"cactus","e":"🌵","scale":1,"slot":14,"role":"family"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.81,"slot":3,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.84,"slot":10,"role":"filler"},{"id":"guitar-0","name":"guitar","e":"🎸","scale":0.87,"slot":1,"role":"filler"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.84,"slot":13,"role":"filler"},{"id":"pencil-0","name":"pencil","e":"✏️","scale":0.93,"slot":12,"role":"filler"}],"target":"cactus-2","distractor":"cactus-1","dir":"left","from":9,"to":8},{"id":"A02","type":"critical","kind":"size","adj":"small","variant":"critical","instruction":"Move the small teddy bear one slot down.","occluded":[0,9,10,13,14],"objects":[{"id":"teddy-bear-1","name":"teddy bear","e":"🧸","scale":0.5,"slot":10,"role":"competitor"},{"id":"teddy-bear-2","name":"teddy bear","e":"🧸","scale":0.75,"slot":11,"role":"target"},{"id":"teddy-bear-3","name":"teddy bear","e":"🧸","scale":1,"slot":2,"role":"family"},{"id":"guitar-0","name":"guitar","e":"🎸","scale":0.89,"slot":13,"role":"filler"},{"id":"octopus-0","name":"octopus","e":"🐙","scale":0.83,"slot":9,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.87,"slot":12,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.84,"slot":1,"role":"filler"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.93,"slot":5,"role":"filler"}],"target":"teddy-bear-2","distractor":"teddy-bear-1","dir":"down","from":11,"to":15},{"id":"A03","type":"critical","kind":"size","adj":"small","variant":"critical","instruction":"Move the small apple one slot to the right.","occluded":[2,3,6,11,14],"objects":[{"id":"apple-1","name":"apple","e":"🍎","scale":0.5,"slot":6,"role":"competitor"},{"id":"apple-2","name":"apple","e":"🍎","scale":0.75,"slot":4,"role":"target"},{"id":"apple-3","name":"apple","e":"🍎","scale":1,"slot":12,"role":"family"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.86,"slot":14,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.82,"slot":3,"role":"filler"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.9,"slot":1,"role":"filler"},{"id":"panda-0","name":"panda","e":"🐼","scale":0.91,"slot":10,"role":"filler"},{"id":"strawberry-0","name":"strawberry","e":"🍓","scale":0.9,"slot":13,"role":"filler"}],"target":"apple-2","distractor":"apple-1","dir":"right","from":4,"to":5},{"id":"A04","type":"critical","kind":"size","adj":"big","variant":"critical","instruction":"Move the big present one slot up.","occluded":[1,5,6,13,14],"objects":[{"id":"present-1","name":"present","e":"🎁","scale":1,"slot":13,"role":"competitor"},{"id":"present-2","name":"present","e":"🎁","scale":0.75,"slot":7,"role":"target"},{"id":"present-3","name":"present","e":"🎁","scale":0.5,"slot":4,"role":"family"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.93,"slot":14,"role":"filler"},{"id":"paintbrush-0","name":"paintbrush","e":"🖌️","scale":0.81,"slot":1,"role":"filler"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.81,"slot":10,"role":"filler"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.81,"slot":11,"role":"filler"},{"id":"owl-0","name":"owl","e":"🦉","scale":0.87,"slot":12,"role":"filler"}],"target":"present-2","distractor":"present-1","dir":"up","from":7,"to":3},{"id":"A05","type":"critical","kind":"size","adj":"big","variant":"critical","instruction":"Move the big candle one slot to the left.","occluded":[3,5,6,11,12],"objects":[{"id":"candle-1","name":"candle","e":"🕯️","scale":1,"slot":5,"role":"competitor"},{"id":"candle-2","name":"candle","e":"🕯️","scale":0.75,"slot":10,"role":"target"},{"id":"candle-3","name":"candle","e":"🕯️","scale":0.5,"slot":2,"role":"family"},{"id":"magnet-0","name":"magnet","e":"🧲","scale":0.88,"slot":3,"role":"filler"},{"id":"strawberry-0","name":"strawberry","e":"🍓","scale":0.9,"slot":12,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.84,"slot":7,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.83,"slot":15,"role":"filler"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.82,"slot":14,"role":"filler"}],"target":"candle-2","distractor":"candle-1","dir":"left","from":10,"to":9},{"id":"A06","type":"critical","kind":"size","adj":"big","variant":"critical","instruction":"Move the big football one slot to the right.","occluded":[1,4,5,12,15],"objects":[{"id":"football-1","name":"football","e":"⚽","scale":1,"slot":5,"role":"competitor"},{"id":"football-2","name":"football","e":"⚽","scale":0.75,"slot":9,"role":"target"},{"id":"football-3","name":"football","e":"⚽","scale":0.5,"slot":7,"role":"family"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.92,"slot":15,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.91,"slot":0,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.86,"slot":2,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.89,"slot":14,"role":"filler"},{"id":"robot-0","name":"robot","e":"🤖","scale":0.84,"slot":11,"role":"filler"}],"target":"football-2","distractor":"football-1","dir":"right","from":9,"to":10},{"id":"A07","type":"critical","kind":"position","adj":"top","variant":"critical","instruction":"Move the top shoe one slot to the right.","occluded":[2,3,6,7,8],"objects":[{"id":"shoe-1","name":"shoe","e":"👟","scale":0.8,"slot":2,"role":"competitor"},{"id":"shoe-2","name":"shoe","e":"👟","scale":0.8,"slot":4,"role":"target"},{"id":"shoe-3","name":"shoe","e":"👟","scale":0.8,"slot":15,"role":"family"},{"id":"panda-0","name":"panda","e":"🐼","scale":0.82,"slot":6,"role":"filler"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.85,"slot":10,"role":"filler"},{"id":"telephone-0","name":"telephone","e":"☎️","scale":0.91,"slot":13,"role":"filler"},{"id":"crown-0","name":"crown","e":"👑","scale":0.87,"slot":0,"role":"filler"},{"id":"paintbrush-0","name":"paintbrush","e":"🖌️","scale":0.95,"slot":1,"role":"filler"}],"target":"shoe-2","distractor":"shoe-1","dir":"right","from":4,"to":5},{"id":"A08","type":"critical","kind":"position","adj":"top","variant":"critical","instruction":"Move the top clock one slot to the left.","occluded":[1,2,9,12,13],"objects":[{"id":"clock-1","name":"clock","e":"⏰","scale":0.8,"slot":2,"role":"competitor"},{"id":"clock-2","name":"clock","e":"⏰","scale":0.8,"slot":5,"role":"target"},{"id":"clock-3","name":"clock","e":"⏰","scale":0.8,"slot":11,"role":"family"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.84,"slot":9,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.86,"slot":12,"role":"filler"},{"id":"dice-0","name":"dice","e":"🎲","scale":0.91,"slot":6,"role":"filler"},{"id":"owl-0","name":"owl","e":"🦉","scale":0.94,"slot":10,"role":"filler"},{"id":"aeroplane-0","name":"aeroplane","e":"✈️","scale":0.8,"slot":3,"role":"filler"}],"target":"clock-2","distractor":"clock-1","dir":"left","from":5,"to":4},{"id":"A09","type":"critical","kind":"position","adj":"bottom","variant":"critical","instruction":"Move the bottom sock one slot up.","occluded":[5,8,10,12,13],"objects":[{"id":"sock-1","name":"sock","e":"🧦","scale":0.8,"slot":8,"role":"competitor"},{"id":"sock-2","name":"sock","e":"🧦","scale":0.8,"slot":6,"role":"target"},{"id":"sock-3","name":"sock","e":"🧦","scale":0.8,"slot":3,"role":"family"},{"id":"fox-0","name":"fox","e":"🦊","scale":0.9,"slot":10,"role":"filler"},{"id":"panda-0","name":"panda","e":"🐼","scale":0.94,"slot":14,"role":"filler"},{"id":"drum-0","name":"drum","e":"🥁","scale":0.88,"slot":9,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.93,"slot":1,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.8,"slot":11,"role":"filler"}],"target":"sock-2","distractor":"sock-1","dir":"up","from":6,"to":2},{"id":"A10","type":"critical","kind":"position","adj":"bottom","variant":"critical","instruction":"Move the bottom hat one slot to the right.","occluded":[0,4,8,12,13],"objects":[{"id":"hat-1","name":"hat","e":"🎩","scale":0.8,"slot":13,"role":"competitor"},{"id":"hat-2","name":"hat","e":"🎩","scale":0.8,"slot":10,"role":"target"},{"id":"hat-3","name":"hat","e":"🎩","scale":0.8,"slot":1,"role":"family"},{"id":"panda-0","name":"panda","e":"🐼","scale":0.89,"slot":8,"role":"filler"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.87,"slot":0,"role":"filler"},{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.91,"slot":2,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.83,"slot":6,"role":"filler"},{"id":"light-bulb-0","name":"light bulb","e":"💡","scale":0.91,"slot":9,"role":"filler"}],"target":"hat-2","distractor":"hat-1","dir":"right","from":10,"to":11},{"id":"A11","type":"control","kind":"size","adj":"small","variant":"matched_triple_grey","instruction":"Move the small book one slot up.","occluded":[0,1,4,10,14],"objects":[{"id":"book-2","name":"book","e":"📘","scale":0.5,"slot":12,"role":"target"},{"id":"book-3","name":"book","e":"📘","scale":0.75,"slot":5,"role":"family"},{"id":"book-4","name":"book","e":"📘","scale":1,"slot":4,"role":"family"},{"id":"aeroplane-0","name":"aeroplane","e":"✈️","scale":0.8,"slot":1,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.9,"slot":14,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.92,"slot":2,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.93,"slot":7,"role":"filler"},{"id":"fox-0","name":"fox","e":"🦊","scale":0.95,"slot":6,"role":"filler"}],"target":"book-2","distractor":null,"dir":"up","from":12,"to":8},{"id":"A12","type":"control","kind":"size","adj":"small","variant":"matched","instruction":"Move the small mug one slot to the left.","occluded":[2,7,8,10,15],"objects":[{"id":"strawberry-0","name":"strawberry","e":"🍓","scale":0.81,"slot":10,"role":"replaced"},{"id":"mug-2","name":"mug","e":"☕","scale":0.75,"slot":13,"role":"target"},{"id":"mug-3","name":"mug","e":"☕","scale":1,"slot":11,"role":"family"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.94,"slot":2,"role":"filler"},{"id":"fox-0","name":"fox","e":"🦊","scale":0.92,"slot":1,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.82,"slot":4,"role":"filler"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.81,"slot":5,"role":"filler"},{"id":"octopus-0","name":"octopus","e":"🐙","scale":0.85,"slot":0,"role":"filler"}],"target":"mug-2","distractor":null,"dir":"left","from":13,"to":12},{"id":"A13","type":"control","kind":"size","adj":"small","variant":"matched","instruction":"Move the small duck one slot down.","occluded":[6,7,9,11,13],"objects":[{"id":"robot-0","name":"robot","e":"🤖","scale":0.83,"slot":7,"role":"replaced"},{"id":"duck-2","name":"duck","e":"🦆","scale":0.75,"slot":1,"role":"target"},{"id":"duck-3","name":"duck","e":"🦆","scale":1,"slot":2,"role":"family"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.92,"slot":13,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.81,"slot":12,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.88,"slot":15,"role":"filler"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.92,"slot":4,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.87,"slot":0,"role":"filler"}],"target":"duck-2","distractor":null,"dir":"down","from":1,"to":5},{"id":"A14","type":"control","kind":"size","adj":"big","variant":"matched_triple_clear","instruction":"Move the big fish one slot to the right.","occluded":[2,10,11,12,15],"objects":[{"id":"fish-2","name":"fish","e":"🐟","scale":1,"slot":8,"role":"target"},{"id":"fish-3","name":"fish","e":"🐟","scale":0.75,"slot":0,"role":"family"},{"id":"fish-4","name":"fish","e":"🐟","scale":0.5,"slot":13,"role":"family"},{"id":"fox-0","name":"fox","e":"🦊","scale":0.83,"slot":10,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.92,"slot":15,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.94,"slot":11,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.83,"slot":5,"role":"filler"},{"id":"trumpet-0","name":"trumpet","e":"🎺","scale":0.84,"slot":6,"role":"filler"}],"target":"fish-2","distractor":null,"dir":"right","from":8,"to":9},{"id":"A15","type":"control","kind":"size","adj":"big","variant":"matched_triple_grey","instruction":"Move the big mushroom one slot down.","occluded":[2,3,4,13,14],"objects":[{"id":"mushroom-2","name":"mushroom","e":"🍄","scale":1,"slot":5,"role":"target"},{"id":"mushroom-3","name":"mushroom","e":"🍄","scale":0.75,"slot":6,"role":"family"},{"id":"mushroom-4","name":"mushroom","e":"🍄","scale":0.5,"slot":4,"role":"family"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.88,"slot":13,"role":"filler"},{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.92,"slot":7,"role":"filler"},{"id":"pencil-0","name":"pencil","e":"✏️","scale":0.87,"slot":12,"role":"filler"},{"id":"dice-0","name":"dice","e":"🎲","scale":0.87,"slot":11,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.95,"slot":8,"role":"filler"}],"target":"mushroom-2","distractor":null,"dir":"down","from":5,"to":9},{"id":"A16","type":"control","kind":"size","adj":"big","variant":"matched","instruction":"Move the big tree one slot to the left.","occluded":[4,6,8,10,14],"objects":[{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.87,"slot":10,"role":"replaced"},{"id":"tree-2","name":"tree","e":"🌲","scale":0.75,"slot":2,"role":"target"},{"id":"tree-3","name":"tree","e":"🌲","scale":0.5,"slot":12,"role":"family"},{"id":"light-bulb-0","name":"light bulb","e":"💡","scale":0.86,"slot":14,"role":"filler"},{"id":"camera-0","name":"camera","e":"📷","scale":0.88,"slot":8,"role":"filler"},{"id":"panda-0","name":"panda","e":"🐼","scale":0.89,"slot":7,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.88,"slot":5,"role":"filler"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.81,"slot":9,"role":"filler"}],"target":"tree-2","distractor":null,"dir":"left","from":2,"to":1},{"id":"A17","type":"control","kind":"position","adj":"top","variant":"matched_triple_grey","instruction":"Move the top bell one slot down.","occluded":[0,1,2,3,10],"objects":[{"id":"bell-2","name":"bell","e":"🔔","scale":0.8,"slot":5,"role":"target"},{"id":"bell-3","name":"bell","e":"🔔","scale":0.8,"slot":11,"role":"family"},{"id":"bell-4","name":"bell","e":"🔔","scale":0.8,"slot":10,"role":"family"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.81,"slot":3,"role":"filler"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.88,"slot":15,"role":"filler"},{"id":"aeroplane-0","name":"aeroplane","e":"✈️","scale":0.82,"slot":7,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.95,"slot":12,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.85,"slot":14,"role":"filler"}],"target":"bell-2","distractor":null,"dir":"down","from":5,"to":9},{"id":"A18","type":"control","kind":"position","adj":"top","variant":"matched","instruction":"Move the top lemon one slot to the left.","occluded":[5,6,7,8,12],"objects":[{"id":"torch-0","name":"torch","e":"🔦","scale":0.91,"slot":12,"role":"replaced"},{"id":"lemon-2","name":"lemon","e":"🍋","scale":0.8,"slot":10,"role":"target"},{"id":"lemon-3","name":"lemon","e":"🍋","scale":0.8,"slot":14,"role":"family"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.85,"slot":7,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.93,"slot":6,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.84,"slot":2,"role":"filler"},{"id":"aeroplane-0","name":"aeroplane","e":"✈️","scale":0.92,"slot":11,"role":"filler"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.89,"slot":0,"role":"filler"}],"target":"lemon-2","distractor":null,"dir":"left","from":10,"to":9},{"id":"A19","type":"control","kind":"position","adj":"bottom","variant":"matched","instruction":"Move the bottom egg one slot to the right.","occluded":[2,4,5,7,15],"objects":[{"id":"lorry-0","name":"lorry","e":"🚚","scale":0.83,"slot":7,"role":"replaced"},{"id":"egg-2","name":"egg","e":"🥚","scale":0.8,"slot":10,"role":"target"},{"id":"egg-3","name":"egg","e":"🥚","scale":0.8,"slot":3,"role":"family"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.94,"slot":15,"role":"filler"},{"id":"trumpet-0","name":"trumpet","e":"🎺","scale":0.88,"slot":4,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.91,"slot":1,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.89,"slot":8,"role":"filler"},{"id":"octopus-0","name":"octopus","e":"🐙","scale":0.83,"slot":9,"role":"filler"}],"target":"egg-2","distractor":null,"dir":"right","from":10,"to":11},{"id":"A20","type":"control","kind":"position","adj":"bottom","variant":"matched_triple_clear","instruction":"Move the bottom key one slot up.","occluded":[3,4,5,7,15],"objects":[{"id":"key-2","name":"key","e":"🔑","scale":0.8,"slot":12,"role":"target"},{"id":"key-3","name":"key","e":"🔑","scale":0.8,"slot":1,"role":"family"},{"id":"key-4","name":"key","e":"🔑","scale":0.8,"slot":9,"role":"family"},{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.89,"slot":4,"role":"filler"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.94,"slot":15,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.84,"slot":7,"role":"filler"},{"id":"drum-0","name":"drum","e":"🥁","scale":0.87,"slot":6,"role":"filler"},{"id":"banana-0","name":"banana","e":"🍌","scale":0.91,"slot":10,"role":"filler"}],"target":"key-2","distractor":null,"dir":"up","from":12,"to":8},{"id":"A21","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the snail one slot to the left.","occluded":[1,2,5,8,9],"objects":[{"id":"snail-1","name":"snail","e":"🐌","scale":0.85,"slot":13,"role":"target"},{"id":"robot-0","name":"robot","e":"🤖","scale":0.92,"slot":9,"role":"filler"},{"id":"lorry-0","name":"lorry","e":"🚚","scale":0.94,"slot":5,"role":"filler"},{"id":"strawberry-0","name":"strawberry","e":"🍓","scale":0.89,"slot":15,"role":"filler"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.85,"slot":3,"role":"filler"},{"id":"pencil-0","name":"pencil","e":"✏️","scale":0.81,"slot":6,"role":"filler"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.91,"slot":14,"role":"filler"},{"id":"fox-0","name":"fox","e":"🦊","scale":0.83,"slot":0,"role":"filler"}],"target":"snail-1","distractor":null,"dir":"left","from":13,"to":12},{"id":"A22","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the guitar one slot to the right.","occluded":[0,2,11,13,14],"objects":[{"id":"guitar-1","name":"guitar","e":"🎸","scale":0.85,"slot":5,"role":"target"},{"id":"lorry-0","name":"lorry","e":"🚚","scale":0.84,"slot":2,"role":"filler"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.87,"slot":14,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.84,"slot":13,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.81,"slot":7,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.89,"slot":3,"role":"filler"},{"id":"camera-0","name":"camera","e":"📷","scale":0.88,"slot":12,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.93,"slot":9,"role":"filler"}],"target":"guitar-1","distractor":null,"dir":"right","from":5,"to":6},{"id":"A23","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the owl one slot up.","occluded":[0,4,5,8,13],"objects":[{"id":"owl-1","name":"owl","e":"🦉","scale":0.85,"slot":7,"role":"target"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.93,"slot":4,"role":"filler"},{"id":"paintbrush-0","name":"paintbrush","e":"🖌️","scale":0.84,"slot":0,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.95,"slot":13,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.85,"slot":12,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.92,"slot":1,"role":"filler"},{"id":"light-bulb-0","name":"light bulb","e":"💡","scale":0.81,"slot":2,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.84,"slot":14,"role":"filler"}],"target":"owl-1","distractor":null,"dir":"up","from":7,"to":3},{"id":"A24","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the strawberry one slot down.","occluded":[0,4,10,12,13],"objects":[{"id":"strawberry-1","name":"strawberry","e":"🍓","scale":0.85,"slot":7,"role":"target"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.89,"slot":12,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.87,"slot":13,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.87,"slot":2,"role":"filler"},{"id":"sunflower-0","name":"sunflower","e":"🌻","scale":0.84,"slot":1,"role":"filler"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.94,"slot":3,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.85,"slot":6,"role":"filler"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.82,"slot":15,"role":"filler"}],"target":"strawberry-1","distractor":null,"dir":"down","from":7,"to":11},{"id":"A25","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the cow one slot to the left.","occluded":[1,7,8,10,13],"objects":[{"id":"cow-1","name":"cow","e":"🐄","scale":0.85,"slot":6,"role":"target"},{"id":"paintbrush-0","name":"paintbrush","e":"🖌️","scale":0.9,"slot":7,"role":"filler"},{"id":"drum-0","name":"drum","e":"🥁","scale":0.93,"slot":8,"role":"filler"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.87,"slot":1,"role":"filler"},{"id":"robot-0","name":"robot","e":"🤖","scale":0.84,"slot":4,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.88,"slot":11,"role":"filler"},{"id":"owl-0","name":"owl","e":"🦉","scale":0.95,"slot":12,"role":"filler"},{"id":"trumpet-0","name":"trumpet","e":"🎺","scale":0.9,"slot":9,"role":"filler"}],"target":"cow-1","distractor":null,"dir":"left","from":6,"to":5},{"id":"A26","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the sunflower one slot to the right.","occluded":[1,3,4,5,6],"objects":[{"id":"sunflower-1","name":"sunflower","e":"🌻","scale":0.85,"slot":12,"role":"target"},{"id":"light-bulb-0","name":"light bulb","e":"💡","scale":0.9,"slot":1,"role":"filler"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.86,"slot":6,"role":"filler"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.9,"slot":9,"role":"filler"},{"id":"guitar-0","name":"guitar","e":"🎸","scale":0.88,"slot":7,"role":"filler"},{"id":"camera-0","name":"camera","e":"📷","scale":0.87,"slot":14,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.85,"slot":11,"role":"filler"},{"id":"dice-0","name":"dice","e":"🎲","scale":0.93,"slot":2,"role":"filler"}],"target":"sunflower-1","distractor":null,"dir":"right","from":12,"to":13},{"id":"A27","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the robot one slot up.","occluded":[1,2,7,14,15],"objects":[{"id":"robot-1","name":"robot","e":"🤖","scale":0.85,"slot":10,"role":"target"},{"id":"paintbrush-0","name":"paintbrush","e":"🖌️","scale":0.94,"slot":7,"role":"filler"},{"id":"bicycle-0","name":"bicycle","e":"🚲","scale":0.84,"slot":15,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.9,"slot":1,"role":"filler"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.85,"slot":11,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.93,"slot":0,"role":"filler"},{"id":"pencil-0","name":"pencil","e":"✏️","scale":0.89,"slot":13,"role":"filler"},{"id":"lorry-0","name":"lorry","e":"🚚","scale":0.87,"slot":9,"role":"filler"}],"target":"robot-1","distractor":null,"dir":"up","from":10,"to":6},{"id":"A28","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the paintbrush one slot down.","occluded":[8,9,11,13,14],"objects":[{"id":"paintbrush-1","name":"paintbrush","e":"🖌️","scale":0.85,"slot":3,"role":"target"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.89,"slot":8,"role":"filler"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.9,"slot":9,"role":"filler"},{"id":"strawberry-0","name":"strawberry","e":"🍓","scale":0.81,"slot":0,"role":"filler"},{"id":"pencil-0","name":"pencil","e":"✏️","scale":0.89,"slot":2,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.8,"slot":6,"role":"filler"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.88,"slot":10,"role":"filler"},{"id":"telephone-0","name":"telephone","e":"☎️","scale":0.82,"slot":4,"role":"filler"}],"target":"paintbrush-1","distractor":null,"dir":"down","from":3,"to":7},{"id":"A29","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the scissors one slot to the left.","occluded":[4,5,6,8,11],"objects":[{"id":"scissors-1","name":"scissors","e":"✂️","scale":0.85,"slot":3,"role":"target"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.95,"slot":5,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.94,"slot":11,"role":"filler"},{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.8,"slot":8,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.94,"slot":13,"role":"filler"},{"id":"dice-0","name":"dice","e":"🎲","scale":0.86,"slot":9,"role":"filler"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.89,"slot":10,"role":"filler"},{"id":"sunflower-0","name":"sunflower","e":"🌻","scale":0.93,"slot":15,"role":"filler"}],"target":"scissors-1","distractor":null,"dir":"left","from":3,"to":2},{"id":"A30","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the telephone one slot to the right.","occluded":[3,10,12,13,15],"objects":[{"id":"telephone-1","name":"telephone","e":"☎️","scale":0.85,"slot":6,"role":"target"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.86,"slot":12,"role":"filler"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.82,"slot":13,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.89,"slot":11,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.88,"slot":0,"role":"filler"},{"id":"light-bulb-0","name":"light bulb","e":"💡","scale":0.84,"slot":1,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.84,"slot":14,"role":"filler"},{"id":"banana-0","name":"banana","e":"🍌","scale":0.85,"slot":9,"role":"filler"}],"target":"telephone-1","distractor":null,"dir":"right","from":6,"to":7}],"B":[{"id":"B01","type":"critical","kind":"size","adj":"small","variant":"critical","instruction":"Move the small book one slot to the left.","occluded":[5,10,11,12,13],"objects":[{"id":"book-1","name":"book","e":"📘","scale":0.5,"slot":5,"role":"competitor"},{"id":"book-2","name":"book","e":"📘","scale":0.75,"slot":3,"role":"target"},{"id":"book-3","name":"book","e":"📘","scale":1,"slot":1,"role":"family"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.94,"slot":12,"role":"filler"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.81,"slot":13,"role":"filler"},{"id":"magnet-0","name":"magnet","e":"🧲","scale":0.9,"slot":6,"role":"filler"},{"id":"panda-0","name":"panda","e":"🐼","scale":0.92,"slot":14,"role":"filler"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.92,"slot":8,"role":"filler"}],"target":"book-2","distractor":"book-1","dir":"left","from":3,"to":2},{"id":"B02","type":"critical","kind":"size","adj":"small","variant":"critical","instruction":"Move the small mug one slot down.","occluded":[5,6,12,13,14],"objects":[{"id":"mug-1","name":"mug","e":"☕","scale":0.5,"slot":6,"role":"competitor"},{"id":"mug-2","name":"mug","e":"☕","scale":0.75,"slot":4,"role":"target"},{"id":"mug-3","name":"mug","e":"☕","scale":1,"slot":7,"role":"family"},{"id":"crown-0","name":"crown","e":"👑","scale":0.9,"slot":13,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.94,"slot":3,"role":"filler"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.85,"slot":0,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.86,"slot":11,"role":"filler"},{"id":"telephone-0","name":"telephone","e":"☎️","scale":0.91,"slot":1,"role":"filler"}],"target":"mug-2","distractor":"mug-1","dir":"down","from":4,"to":8},{"id":"B03","type":"critical","kind":"size","adj":"small","variant":"critical","instruction":"Move the small duck one slot to the right.","occluded":[5,7,8,9,15],"objects":[{"id":"duck-1","name":"duck","e":"🦆","scale":0.5,"slot":9,"role":"competitor"},{"id":"duck-2","name":"duck","e":"🦆","scale":0.75,"slot":12,"role":"target"},{"id":"duck-3","name":"duck","e":"🦆","scale":1,"slot":1,"role":"family"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.92,"slot":7,"role":"filler"},{"id":"sunflower-0","name":"sunflower","e":"🌻","scale":0.84,"slot":6,"role":"filler"},{"id":"aeroplane-0","name":"aeroplane","e":"✈️","scale":0.81,"slot":2,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.83,"slot":3,"role":"filler"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.87,"slot":14,"role":"filler"}],"target":"duck-2","distractor":"duck-1","dir":"right","from":12,"to":13},{"id":"B04","type":"critical","kind":"size","adj":"big","variant":"critical","instruction":"Move the big fish one slot up.","occluded":[0,4,5,11,15],"objects":[{"id":"fish-1","name":"fish","e":"🐟","scale":1,"slot":4,"role":"competitor"},{"id":"fish-2","name":"fish","e":"🐟","scale":0.75,"slot":14,"role":"target"},{"id":"fish-3","name":"fish","e":"🐟","scale":0.5,"slot":9,"role":"family"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.86,"slot":15,"role":"filler"},{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.82,"slot":5,"role":"filler"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.82,"slot":8,"role":"filler"},{"id":"strawberry-0","name":"strawberry","e":"🍓","scale":0.92,"slot":3,"role":"filler"},{"id":"octopus-0","name":"octopus","e":"🐙","scale":0.81,"slot":7,"role":"filler"}],"target":"fish-2","distractor":"fish-1","dir":"up","from":14,"to":10},{"id":"B05","type":"critical","kind":"size","adj":"big","variant":"critical","instruction":"Move the big mushroom one slot to the left.","occluded":[0,3,5,6,7],"objects":[{"id":"mushroom-1","name":"mushroom","e":"🍄","scale":1,"slot":5,"role":"competitor"},{"id":"mushroom-2","name":"mushroom","e":"🍄","scale":0.75,"slot":2,"role":"target"},{"id":"mushroom-3","name":"mushroom","e":"🍄","scale":0.5,"slot":12,"role":"family"},{"id":"crown-0","name":"crown","e":"👑","scale":0.84,"slot":3,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.8,"slot":6,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.91,"slot":11,"role":"filler"},{"id":"trumpet-0","name":"trumpet","e":"🎺","scale":0.88,"slot":9,"role":"filler"},{"id":"sunflower-0","name":"sunflower","e":"🌻","scale":0.84,"slot":15,"role":"filler"}],"target":"mushroom-2","distractor":"mushroom-1","dir":"left","from":2,"to":1},{"id":"B06","type":"critical","kind":"size","adj":"big","variant":"critical","instruction":"Move the big tree one slot to the right.","occluded":[0,2,6,8,13],"objects":[{"id":"tree-1","name":"tree","e":"🌲","scale":1,"slot":0,"role":"competitor"},{"id":"tree-2","name":"tree","e":"🌲","scale":0.75,"slot":14,"role":"target"},{"id":"tree-3","name":"tree","e":"🌲","scale":0.5,"slot":9,"role":"family"},{"id":"drum-0","name":"drum","e":"🥁","scale":0.91,"slot":6,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.93,"slot":2,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.87,"slot":4,"role":"filler"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.86,"slot":12,"role":"filler"},{"id":"crown-0","name":"crown","e":"👑","scale":0.93,"slot":5,"role":"filler"}],"target":"tree-2","distractor":"tree-1","dir":"right","from":14,"to":15},{"id":"B07","type":"critical","kind":"position","adj":"top","variant":"critical","instruction":"Move the top bell one slot to the right.","occluded":[5,8,11,14,15],"objects":[{"id":"bell-1","name":"bell","e":"🔔","scale":0.8,"slot":5,"role":"competitor"},{"id":"bell-2","name":"bell","e":"🔔","scale":0.8,"slot":9,"role":"target"},{"id":"bell-3","name":"bell","e":"🔔","scale":0.8,"slot":12,"role":"family"},{"id":"camera-0","name":"camera","e":"📷","scale":0.83,"slot":14,"role":"filler"},{"id":"panda-0","name":"panda","e":"🐼","scale":0.9,"slot":2,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.81,"slot":3,"role":"filler"},{"id":"crown-0","name":"crown","e":"👑","scale":0.92,"slot":4,"role":"filler"},{"id":"pineapple-0","name":"pineapple","e":"🍍","scale":0.86,"slot":1,"role":"filler"}],"target":"bell-2","distractor":"bell-1","dir":"right","from":9,"to":10},{"id":"B08","type":"critical","kind":"position","adj":"top","variant":"critical","instruction":"Move the top egg one slot to the left.","occluded":[3,4,6,7,11],"objects":[{"id":"egg-1","name":"egg","e":"🥚","scale":0.8,"slot":6,"role":"competitor"},{"id":"egg-2","name":"egg","e":"🥚","scale":0.8,"slot":10,"role":"target"},{"id":"egg-3","name":"egg","e":"🥚","scale":0.8,"slot":14,"role":"family"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.84,"slot":4,"role":"filler"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.9,"slot":2,"role":"filler"},{"id":"camera-0","name":"camera","e":"📷","scale":0.86,"slot":13,"role":"filler"},{"id":"magnet-0","name":"magnet","e":"🧲","scale":0.86,"slot":12,"role":"filler"},{"id":"telephone-0","name":"telephone","e":"☎️","scale":0.87,"slot":1,"role":"filler"}],"target":"egg-2","distractor":"egg-1","dir":"left","from":10,"to":9},{"id":"B09","type":"critical","kind":"position","adj":"bottom","variant":"critical","instruction":"Move the bottom lemon one slot up.","occluded":[2,4,5,14,15],"objects":[{"id":"lemon-1","name":"lemon","e":"🍋","scale":0.8,"slot":15,"role":"competitor"},{"id":"lemon-2","name":"lemon","e":"🍋","scale":0.8,"slot":7,"role":"target"},{"id":"lemon-3","name":"lemon","e":"🍋","scale":0.8,"slot":1,"role":"family"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.86,"slot":4,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.82,"slot":14,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.83,"slot":6,"role":"filler"},{"id":"fox-0","name":"fox","e":"🦊","scale":0.83,"slot":10,"role":"filler"},{"id":"trumpet-0","name":"trumpet","e":"🎺","scale":0.84,"slot":12,"role":"filler"}],"target":"lemon-2","distractor":"lemon-1","dir":"up","from":7,"to":3},{"id":"B10","type":"critical","kind":"position","adj":"bottom","variant":"critical","instruction":"Move the bottom key one slot to the right.","occluded":[1,7,8,13,14],"objects":[{"id":"key-1","name":"key","e":"🔑","scale":0.8,"slot":13,"role":"competitor"},{"id":"key-2","name":"key","e":"🔑","scale":0.8,"slot":10,"role":"target"},{"id":"key-3","name":"key","e":"🔑","scale":0.8,"slot":5,"role":"family"},{"id":"telephone-0","name":"telephone","e":"☎️","scale":0.81,"slot":1,"role":"filler"},{"id":"sunflower-0","name":"sunflower","e":"🌻","scale":0.9,"slot":6,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.84,"slot":4,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.89,"slot":3,"role":"filler"},{"id":"banana-0","name":"banana","e":"🍌","scale":0.92,"slot":2,"role":"filler"}],"target":"key-2","distractor":"key-1","dir":"right","from":10,"to":11},{"id":"B11","type":"control","kind":"size","adj":"small","variant":"matched_triple_grey","instruction":"Move the small cactus one slot up.","occluded":[4,8,11,12,13],"objects":[{"id":"cactus-2","name":"cactus","e":"🌵","scale":0.5,"slot":10,"role":"target"},{"id":"cactus-3","name":"cactus","e":"🌵","scale":0.75,"slot":9,"role":"family"},{"id":"cactus-4","name":"cactus","e":"🌵","scale":1,"slot":4,"role":"family"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.95,"slot":8,"role":"filler"},{"id":"aeroplane-0","name":"aeroplane","e":"✈️","scale":0.95,"slot":15,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.93,"slot":7,"role":"filler"},{"id":"lorry-0","name":"lorry","e":"🚚","scale":0.84,"slot":3,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.92,"slot":5,"role":"filler"}],"target":"cactus-2","distractor":null,"dir":"up","from":10,"to":6},{"id":"B12","type":"control","kind":"size","adj":"small","variant":"matched","instruction":"Move the small teddy bear one slot to the left.","occluded":[0,5,7,9,12],"objects":[{"id":"torch-0","name":"torch","e":"🔦","scale":0.88,"slot":9,"role":"replaced"},{"id":"teddy-bear-2","name":"teddy bear","e":"🧸","scale":0.75,"slot":15,"role":"target"},{"id":"teddy-bear-3","name":"teddy bear","e":"🧸","scale":1,"slot":1,"role":"family"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.84,"slot":5,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.81,"slot":10,"role":"filler"},{"id":"bicycle-0","name":"bicycle","e":"🚲","scale":0.89,"slot":11,"role":"filler"},{"id":"panda-0","name":"panda","e":"🐼","scale":0.93,"slot":13,"role":"filler"},{"id":"aeroplane-0","name":"aeroplane","e":"✈️","scale":0.81,"slot":2,"role":"filler"}],"target":"teddy-bear-2","distractor":null,"dir":"left","from":15,"to":14},{"id":"B13","type":"control","kind":"size","adj":"small","variant":"matched","instruction":"Move the small apple one slot down.","occluded":[2,9,10,13,14],"objects":[{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.84,"slot":14,"role":"replaced"},{"id":"apple-2","name":"apple","e":"🍎","scale":0.75,"slot":1,"role":"target"},{"id":"apple-3","name":"apple","e":"🍎","scale":1,"slot":6,"role":"family"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.85,"slot":13,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.94,"slot":15,"role":"filler"},{"id":"light-bulb-0","name":"light bulb","e":"💡","scale":0.95,"slot":12,"role":"filler"},{"id":"octopus-0","name":"octopus","e":"🐙","scale":0.85,"slot":8,"role":"filler"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.91,"slot":11,"role":"filler"}],"target":"apple-2","distractor":null,"dir":"down","from":1,"to":5},{"id":"B14","type":"control","kind":"size","adj":"big","variant":"matched_triple_clear","instruction":"Move the big present one slot to the right.","occluded":[0,1,4,11,14],"objects":[{"id":"present-2","name":"present","e":"🎁","scale":1,"slot":5,"role":"target"},{"id":"present-3","name":"present","e":"🎁","scale":0.75,"slot":7,"role":"family"},{"id":"present-4","name":"present","e":"🎁","scale":0.5,"slot":8,"role":"family"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.93,"slot":1,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.82,"slot":14,"role":"filler"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.92,"slot":9,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.81,"slot":2,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.8,"slot":15,"role":"filler"}],"target":"present-2","distractor":null,"dir":"right","from":5,"to":6},{"id":"B15","type":"control","kind":"size","adj":"big","variant":"matched_triple_grey","instruction":"Move the big candle one slot down.","occluded":[4,5,6,8,13],"objects":[{"id":"candle-2","name":"candle","e":"🕯️","scale":1,"slot":7,"role":"target"},{"id":"candle-3","name":"candle","e":"🕯️","scale":0.75,"slot":3,"role":"family"},{"id":"candle-4","name":"candle","e":"🕯️","scale":0.5,"slot":13,"role":"family"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.85,"slot":4,"role":"filler"},{"id":"owl-0","name":"owl","e":"🦉","scale":0.85,"slot":6,"role":"filler"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.8,"slot":15,"role":"filler"},{"id":"guitar-0","name":"guitar","e":"🎸","scale":0.85,"slot":9,"role":"filler"},{"id":"telephone-0","name":"telephone","e":"☎️","scale":0.83,"slot":10,"role":"filler"}],"target":"candle-2","distractor":null,"dir":"down","from":7,"to":11},{"id":"B16","type":"control","kind":"size","adj":"big","variant":"matched","instruction":"Move the big football one slot to the left.","occluded":[4,6,7,14,15],"objects":[{"id":"panda-0","name":"panda","e":"🐼","scale":0.87,"slot":6,"role":"replaced"},{"id":"football-2","name":"football","e":"⚽","scale":0.75,"slot":3,"role":"target"},{"id":"football-3","name":"football","e":"⚽","scale":0.5,"slot":0,"role":"family"},{"id":"strawberry-0","name":"strawberry","e":"🍓","scale":0.88,"slot":15,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.93,"slot":9,"role":"filler"},{"id":"trumpet-0","name":"trumpet","e":"🎺","scale":0.81,"slot":1,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.94,"slot":5,"role":"filler"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.81,"slot":12,"role":"filler"}],"target":"football-2","distractor":null,"dir":"left","from":3,"to":2},{"id":"B17","type":"control","kind":"position","adj":"top","variant":"matched_triple_grey","instruction":"Move the top shoe one slot down.","occluded":[0,2,3,7,9],"objects":[{"id":"shoe-2","name":"shoe","e":"👟","scale":0.8,"slot":4,"role":"target"},{"id":"shoe-3","name":"shoe","e":"👟","scale":0.8,"slot":13,"role":"family"},{"id":"shoe-4","name":"shoe","e":"👟","scale":0.8,"slot":9,"role":"family"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.82,"slot":0,"role":"filler"},{"id":"crown-0","name":"crown","e":"👑","scale":0.83,"slot":3,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.83,"slot":6,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.9,"slot":11,"role":"filler"},{"id":"guitar-0","name":"guitar","e":"🎸","scale":0.89,"slot":10,"role":"filler"}],"target":"shoe-2","distractor":null,"dir":"down","from":4,"to":8},{"id":"B18","type":"control","kind":"position","adj":"top","variant":"matched","instruction":"Move the top sock one slot to the left.","occluded":[1,10,11,13,14],"objects":[{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.81,"slot":14,"role":"replaced"},{"id":"sock-2","name":"sock","e":"🧦","scale":0.8,"slot":5,"role":"target"},{"id":"sock-3","name":"sock","e":"🧦","scale":0.8,"slot":9,"role":"family"},{"id":"strawberry-0","name":"strawberry","e":"🍓","scale":0.8,"slot":11,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.81,"slot":10,"role":"filler"},{"id":"owl-0","name":"owl","e":"🦉","scale":0.8,"slot":8,"role":"filler"},{"id":"banana-0","name":"banana","e":"🍌","scale":0.87,"slot":7,"role":"filler"},{"id":"fox-0","name":"fox","e":"🦊","scale":0.94,"slot":12,"role":"filler"}],"target":"sock-2","distractor":null,"dir":"left","from":5,"to":4},{"id":"B19","type":"control","kind":"position","adj":"bottom","variant":"matched","instruction":"Move the bottom clock one slot to the right.","occluded":[1,3,11,12,13],"objects":[{"id":"bicycle-0","name":"bicycle","e":"🚲","scale":0.92,"slot":12,"role":"replaced"},{"id":"clock-2","name":"clock","e":"⏰","scale":0.8,"slot":6,"role":"target"},{"id":"clock-3","name":"clock","e":"⏰","scale":0.8,"slot":2,"role":"family"},{"id":"aeroplane-0","name":"aeroplane","e":"✈️","scale":0.87,"slot":3,"role":"filler"},{"id":"robot-0","name":"robot","e":"🤖","scale":0.82,"slot":11,"role":"filler"},{"id":"camera-0","name":"camera","e":"📷","scale":0.92,"slot":15,"role":"filler"},{"id":"dice-0","name":"dice","e":"🎲","scale":0.87,"slot":5,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.91,"slot":14,"role":"filler"}],"target":"clock-2","distractor":null,"dir":"right","from":6,"to":7},{"id":"B20","type":"control","kind":"position","adj":"bottom","variant":"matched_triple_clear","instruction":"Move the bottom hat one slot up.","occluded":[2,4,5,7,12],"objects":[{"id":"hat-2","name":"hat","e":"🎩","scale":0.8,"slot":14,"role":"target"},{"id":"hat-3","name":"hat","e":"🎩","scale":0.8,"slot":8,"role":"family"},{"id":"hat-4","name":"hat","e":"🎩","scale":0.8,"slot":3,"role":"family"},{"id":"octopus-0","name":"octopus","e":"🐙","scale":0.87,"slot":12,"role":"filler"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.88,"slot":5,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.94,"slot":15,"role":"filler"},{"id":"lorry-0","name":"lorry","e":"🚚","scale":0.9,"slot":6,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.87,"slot":9,"role":"filler"}],"target":"hat-2","distractor":null,"dir":"up","from":14,"to":10},{"id":"B21","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the drum one slot to the left.","occluded":[1,2,3,9,13],"objects":[{"id":"drum-1","name":"drum","e":"🥁","scale":0.85,"slot":11,"role":"target"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.89,"slot":1,"role":"filler"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.91,"slot":2,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.87,"slot":6,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.81,"slot":4,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.9,"slot":5,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.86,"slot":7,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.86,"slot":12,"role":"filler"}],"target":"drum-1","distractor":null,"dir":"left","from":11,"to":10},{"id":"B22","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the lorry one slot to the right.","occluded":[0,1,5,6,12],"objects":[{"id":"lorry-1","name":"lorry","e":"🚚","scale":0.85,"slot":14,"role":"target"},{"id":"tractor-0","name":"tractor","e":"🚜","scale":0.9,"slot":12,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.81,"slot":5,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.8,"slot":10,"role":"filler"},{"id":"bicycle-0","name":"bicycle","e":"🚲","scale":0.81,"slot":7,"role":"filler"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.81,"slot":4,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.87,"slot":11,"role":"filler"},{"id":"pear-0","name":"pear","e":"🍐","scale":0.85,"slot":9,"role":"filler"}],"target":"lorry-1","distractor":null,"dir":"right","from":14,"to":15},{"id":"B23","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the pear one slot up.","occluded":[2,7,8,9,14],"objects":[{"id":"pear-1","name":"pear","e":"🍐","scale":0.85,"slot":5,"role":"target"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.92,"slot":8,"role":"filler"},{"id":"owl-0","name":"owl","e":"🦉","scale":0.89,"slot":14,"role":"filler"},{"id":"trumpet-0","name":"trumpet","e":"🎺","scale":0.84,"slot":10,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.94,"slot":6,"role":"filler"},{"id":"rocket-0","name":"rocket","e":"🚀","scale":0.91,"slot":12,"role":"filler"},{"id":"paintbrush-0","name":"paintbrush","e":"🖌️","scale":0.95,"slot":15,"role":"filler"},{"id":"drum-0","name":"drum","e":"🥁","scale":0.87,"slot":4,"role":"filler"}],"target":"pear-1","distractor":null,"dir":"up","from":5,"to":1},{"id":"B24","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the jigsaw piece one slot down.","occluded":[0,1,3,5,9],"objects":[{"id":"jigsaw-piece-1","name":"jigsaw piece","e":"🧩","scale":0.85,"slot":10,"role":"target"},{"id":"camera-0","name":"camera","e":"📷","scale":0.93,"slot":0,"role":"filler"},{"id":"magnet-0","name":"magnet","e":"🧲","scale":0.86,"slot":9,"role":"filler"},{"id":"penguin-0","name":"penguin","e":"🐧","scale":0.8,"slot":6,"role":"filler"},{"id":"telephone-0","name":"telephone","e":"☎️","scale":0.84,"slot":15,"role":"filler"},{"id":"carrot-0","name":"carrot","e":"🥕","scale":0.88,"slot":2,"role":"filler"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.92,"slot":4,"role":"filler"},{"id":"scissors-0","name":"scissors","e":"✂️","scale":0.88,"slot":13,"role":"filler"}],"target":"jigsaw-piece-1","distractor":null,"dir":"down","from":10,"to":14},{"id":"B25","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the aeroplane one slot to the left.","occluded":[1,5,6,7,8],"objects":[{"id":"aeroplane-1","name":"aeroplane","e":"✈️","scale":0.85,"slot":10,"role":"target"},{"id":"dice-0","name":"dice","e":"🎲","scale":0.9,"slot":8,"role":"filler"},{"id":"camera-0","name":"camera","e":"📷","scale":0.92,"slot":6,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.82,"slot":7,"role":"filler"},{"id":"banana-0","name":"banana","e":"🍌","scale":0.83,"slot":13,"role":"filler"},{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.91,"slot":11,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.82,"slot":4,"role":"filler"},{"id":"magnet-0","name":"magnet","e":"🧲","scale":0.8,"slot":15,"role":"filler"}],"target":"aeroplane-1","distractor":null,"dir":"left","from":10,"to":9},{"id":"B26","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the bicycle one slot to the right.","occluded":[0,7,12,13,15],"objects":[{"id":"bicycle-1","name":"bicycle","e":"🚲","scale":0.85,"slot":2,"role":"target"},{"id":"strawberry-0","name":"strawberry","e":"🍓","scale":0.89,"slot":13,"role":"filler"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.85,"slot":12,"role":"filler"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.9,"slot":4,"role":"filler"},{"id":"trumpet-0","name":"trumpet","e":"🎺","scale":0.93,"slot":8,"role":"filler"},{"id":"light-bulb-0","name":"light bulb","e":"💡","scale":0.87,"slot":5,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.95,"slot":10,"role":"filler"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.95,"slot":11,"role":"filler"}],"target":"bicycle-1","distractor":null,"dir":"right","from":2,"to":3},{"id":"B27","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the cupcake one slot up.","occluded":[1,4,6,8,13],"objects":[{"id":"cupcake-1","name":"cupcake","e":"🧁","scale":0.85,"slot":7,"role":"target"},{"id":"balloon-0","name":"balloon","e":"🎈","scale":0.85,"slot":4,"role":"filler"},{"id":"jigsaw-piece-0","name":"jigsaw piece","e":"🧩","scale":0.89,"slot":1,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.84,"slot":13,"role":"filler"},{"id":"banana-0","name":"banana","e":"🍌","scale":0.86,"slot":5,"role":"filler"},{"id":"turtle-0","name":"turtle","e":"🐢","scale":0.87,"slot":0,"role":"filler"},{"id":"cow-0","name":"cow","e":"🐄","scale":0.86,"slot":12,"role":"filler"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.89,"slot":15,"role":"filler"}],"target":"cupcake-1","distractor":null,"dir":"up","from":7,"to":3},{"id":"B28","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the camera one slot down.","occluded":[6,8,9,11,12],"objects":[{"id":"camera-1","name":"camera","e":"📷","scale":0.85,"slot":10,"role":"target"},{"id":"glasses-0","name":"glasses","e":"👓","scale":0.82,"slot":11,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.93,"slot":6,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.84,"slot":5,"role":"filler"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.9,"slot":7,"role":"filler"},{"id":"guitar-0","name":"guitar","e":"🎸","scale":0.83,"slot":13,"role":"filler"},{"id":"crown-0","name":"crown","e":"👑","scale":0.93,"slot":4,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.9,"slot":1,"role":"filler"}],"target":"camera-1","distractor":null,"dir":"down","from":10,"to":14},{"id":"B29","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the panda one slot to the left.","occluded":[2,7,8,9,12],"objects":[{"id":"panda-1","name":"panda","e":"🐼","scale":0.85,"slot":14,"role":"target"},{"id":"snail-0","name":"snail","e":"🐌","scale":0.82,"slot":7,"role":"filler"},{"id":"crown-0","name":"crown","e":"👑","scale":0.87,"slot":9,"role":"filler"},{"id":"light-bulb-0","name":"light bulb","e":"💡","scale":0.89,"slot":10,"role":"filler"},{"id":"umbrella-0","name":"umbrella","e":"🌂","scale":0.84,"slot":0,"role":"filler"},{"id":"banana-0","name":"banana","e":"🍌","scale":0.87,"slot":4,"role":"filler"},{"id":"fox-0","name":"fox","e":"🦊","scale":0.94,"slot":5,"role":"filler"},{"id":"hammer-0","name":"hammer","e":"🔨","scale":0.86,"slot":1,"role":"filler"}],"target":"panda-1","distractor":null,"dir":"left","from":14,"to":13},{"id":"B30","type":"control","kind":"simple","adj":null,"variant":"single","instruction":"Move the light bulb one slot to the right.","occluded":[0,1,3,7,8],"objects":[{"id":"light-bulb-1","name":"light bulb","e":"💡","scale":0.85,"slot":5,"role":"target"},{"id":"bicycle-0","name":"bicycle","e":"🚲","scale":0.95,"slot":7,"role":"filler"},{"id":"camera-0","name":"camera","e":"📷","scale":0.8,"slot":3,"role":"filler"},{"id":"cupcake-0","name":"cupcake","e":"🧁","scale":0.8,"slot":0,"role":"filler"},{"id":"lorry-0","name":"lorry","e":"🚚","scale":0.83,"slot":2,"role":"filler"},{"id":"watermelon-0","name":"watermelon","e":"🍉","scale":0.86,"slot":13,"role":"filler"},{"id":"torch-0","name":"torch","e":"🔦","scale":0.88,"slot":14,"role":"filler"},{"id":"octopus-0","name":"octopus","e":"🐙","scale":0.85,"slot":11,"role":"filler"}],"target":"light-bulb-1","distractor":null,"dir":"right","from":5,"to":6}]}};
+const MAIN_ROUNDS = 30;
+const PHRASE = { left: 'one slot to the left', right: 'one slot to the right', up: 'one slot up', down: 'one slot down' };
+const $ = id => document.getElementById(id);
+const stage = $('stage'), shelf = $('shelf'), ask = $('ask'), bubble = $('bubble');
+const overlay = $('overlay'), card = $('card'), hud = $('hud'), toast = $('toast');
+
+const S = {
+  consentTime: '', startedAt: '', finishedAt: '', assignment: null, order: '',
+  plan: [], part: 0, parts: [],
+  phase: 'intro', list: [], i: 0, trial: null, pos: {},
+  canMove: false, revealed: false, tStart: 0, tReveal: 0, selected: null, attempt: 1,
+};
+const cond = () => S.plan[S.part]?.condition;
+const isDir = () => cond() === 'director';
+const cur = () => S.parts[S.part];
+function setScene(c) {
+  stage.classList.toggle('nodir', c !== 'director');
+  ask.setAttribute('aria-label', c === 'director' ? "Show the Director's instruction" : 'Show the instruction');
+}
+
+// ---------- shelf ----------
+// Drawn once as SVG in "shelf units" (the front face is 100 x 100). Each cubby is seen slightly
+// from above and from the right, so its left inner wall and its floor show, and its back
+// (open, or a wooden back panel) is shifted up and to the right by DX, DY.
+// One transparent slot <div> per cubby sits on top and holds the objects.
+const T = 3.2, G = 2.4, C = (100 - 2 * T - 3 * G) / 4, DX = 6, DY = 3;
+const cub = s => [T + (s % 4) * (C + G), T + Math.floor(s / 4) * (C + G)];
+const shelfArt = $('shelfArt');
+(function drawShelf() {
+  const pts = a => a.map(p => p.map(v => +v.toFixed(2)).join(',')).join(' ');
+  const poly = (a, attrs) => `<polygon points="${pts(a)}" ${attrs}/>`;
+  const line = (x1, y1, x2, y2, cls) => `<line class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+  let h = `<defs><pattern id="woodBack" patternUnits="userSpaceOnUse" width="20" height="4.5">
+      <rect width="20" height="4.5" fill="var(--wood-back)"/>
+      <path d="M0 2.1 Q5 1.5 10 2.3 T20 2.1" fill="none" stroke="rgba(122,74,28,.25)" stroke-width=".35"/>
+    </pattern></defs>`;
+  h += `<ellipse cx="54" cy="100.6" rx="55" ry="2.8" fill="rgba(20,40,40,.2)"/>`;
+  // right side and top of the unit
+  const side = [[100, 0], [100 + DX, -DY], [100 + DX, 100 - DY], [100, 100]];
+  const top = [[0, 0], [DX, -DY], [100 + DX, -DY], [100, 0]];
+  h += poly(side, 'fill="var(--wood-side)"');
+  h += line(100 + DX * .5, 6, 100 + DX * .5, 94 - DY * .5, 'grain');
+  h += poly(top, 'fill="var(--wood-top)"');
+  h += line(DX * .5 + 10, -DY * .5, 100 + DX * .5 - 10, -DY * .5, 'grain');
+  h += poly(side, 'class="ink"') + poly(top, 'class="ink"');
+  // inside of each cubby
+  let holes = '';
+  for (let s = 0; s < 16; s++) {
+    const [x, y] = cub(s);
+    h += poly([[x, y], [x + DX, y], [x + DX, y + C - DY], [x, y + C]], 'fill="var(--wood-inner)"');
+    h += poly([[x, y + C], [x + DX, y + C - DY], [x + C, y + C - DY], [x + C, y + C]], 'fill="var(--wood-floor)"');
+    h += `<rect class="back" x="${x + DX}" y="${y}" width="${C - DX}" height="${C - DY}"/>`;
+    h += `<rect x="${x}" y="${y}" width="${C}" height="1.7" fill="rgba(0,0,0,.16)"/>`;
+    h += `<polyline class="ink thin" points="${pts([[x + DX, y], [x + DX, y + C - DY], [x + C, y + C - DY]])}"/>`;
+    holes += `M${x} ${y}h${C}v${C}h${-C}Z`;
+  }
+  // front face: one board frame with 16 openings
+  const front = `M0 0H100V100H0Z${holes}`;
+  h += `<path d="${front}" fill="var(--wood-front)" fill-rule="evenodd"/>`;
+  for (let r = 0; r <= 4; r++) {
+    const yb = r === 0 ? 0 : T + r * C + (r - 1) * G, hb = r === 0 || r === 4 ? T : G;
+    h += line(1.5, yb + .45, 98.5, yb + .45, 'grain" style="stroke: rgba(255,255,255,.55)');
+    h += line(4 + r * 3, yb + hb * .6, 44 + r * 2, yb + hb * .6, 'grain') + line(52 - r, yb + hb * .55, 95 - r * 2, yb + hb * .55, 'grain');
+  }
+  h += `<path d="${front}" class="ink" fill-rule="evenodd"/>`;
+  shelfArt.innerHTML = h;
+})();
+const backs = [...shelfArt.querySelectorAll('.back')];
+const slots = [];
+for (let s = 0; s < 16; s++) {
+  const d = document.createElement('div'), [x, y] = cub(s);
+  d.className = 'slot'; d.dataset.slot = s;
+  Object.assign(d.style, { left: x + '%', top: y + '%', width: C + '%', height: C + '%', paddingLeft: DX + '%', paddingBottom: DY * .45 + '%' });
+  shelf.appendChild(d); slots.push(d);
+}
+function drawTrial(t) {
+  slots.forEach((el, s) => el.classList.toggle('occ', t.occluded.includes(s)));
+  backs.forEach((el, s) => el.classList.toggle('closed', t.occluded.includes(s)));
+  drawObjects();
+}
+function drawObjects() {
+  slots.forEach(el => { el.innerHTML = ''; el.classList.remove('drop'); });
+  for (const o of S.trial.objects) {
+    const el = document.createElement('span');
+    el.className = 'obj'; el.dataset.id = o.id; el.textContent = o.e;
+    el.style.setProperty('--s', o.scale);
+    el.setAttribute('aria-label', o.name);
+    if (S.selected === o.id) el.classList.add('selected');
+    slots[S.pos[o.id]].appendChild(el);
+  }
+}
+const occupied = s => Object.values(S.pos).includes(s);
+function preview(t) {
+  // a layout shown behind an instruction card (not interactive)
+  S.trial = t; S.pos = {}; t.objects.forEach(o => S.pos[o.id] = o.slot);
+  drawTrial(t); setCanMove(false); stage.classList.remove('objs-out');
+  ask.disabled = true; ask.classList.remove('waiting');
+}
+
+// ---------- moving objects: drag, or tap object then tap empty slot ----------
+let drag = null, ghost = null;
+shelf.addEventListener('pointerdown', e => {
+  const o = e.target.closest('.obj');
+  if (!o || !S.canMove) return;
+  e.preventDefault();
+  drag = { id: o.dataset.id, el: o, x0: e.clientX, y0: e.clientY, moved: false, over: null };
+});
+window.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
+  if (!drag.moved) {
+    drag.moved = true; setSelected(null);
+    drag.el.classList.add('lifting');
+    ghost = document.createElement('div');
+    ghost.className = 'ghost'; ghost.textContent = drag.el.textContent;
+    ghost.style.setProperty('--s', drag.el.style.getPropertyValue('--s'));
+    stage.appendChild(ghost);
+  }
+  const r = stage.getBoundingClientRect();
+  ghost.style.left = (e.clientX - r.left) + 'px';
+  ghost.style.top = (e.clientY - r.top) + 'px';
+  const slot = document.elementFromPoint(e.clientX, e.clientY)?.closest('.slot');
+  const s = slot ? +slot.dataset.slot : null;
+  const ok = s !== null && !occupied(s);
+  if (drag.over !== null) slots[drag.over].classList.remove('drop');
+  drag.over = ok ? s : null;
+  if (ok) slots[s].classList.add('drop');
+});
+function endDrag(commit) {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (ghost) { ghost.remove(); ghost = null; }
+  if (d.over !== null) slots[d.over].classList.remove('drop');
+  d.el.classList.remove('lifting');
+  if (!d.moved) { if (commit) setSelected(S.selected === d.id ? null : d.id); return; }
+  if (commit && d.over !== null) commitMove(d.id, d.over);
+}
+window.addEventListener('pointerup', () => endDrag(true));
+window.addEventListener('pointercancel', () => endDrag(false));
+shelf.addEventListener('click', e => {
+  if (!S.canMove || !S.selected || e.target.closest('.obj')) return;
+  const slot = e.target.closest('.slot');
+  if (slot && !occupied(+slot.dataset.slot)) commitMove(S.selected, +slot.dataset.slot);
+});
+function setSelected(id) { S.selected = id; shelf.querySelectorAll('.obj').forEach(el => el.classList.toggle('selected', el.dataset.id === id)); }
+function setCanMove(v) { S.canMove = v; stage.classList.toggle('can-move', v); }
+
+// ---------- one round ----------
+function startTrial() {
+  const t = S.list[S.i];
+  S.trial = t; S.pos = {}; S.selected = null; S.revealed = false;
+  t.objects.forEach(o => S.pos[o.id] = o.slot);
+  drawTrial(t);
+  stage.classList.remove('objs-out');
+  bubble.hidden = true; toast.hidden = true;
+  setCanMove(false);
+  ask.disabled = false; ask.classList.add('waiting');
+  hud.hidden = false;
+  hud.textContent = `Part ${S.part + 1} of ${S.plan.length} · ` +
+    (S.phase === 'practice' ? `Practice ${S.i + 1} of ${S.list.length}` : `Round ${S.i + 1} of ${S.list.length}`);
+  S.tStart = performance.now();
+  ask.focus({ preventScroll: true });
+}
+ask.addEventListener('click', () => {
+  if (S.revealed || !S.trial || ask.disabled) return;
+  S.revealed = true;
+  ask.disabled = true; ask.classList.remove('waiting');
+  bubble.textContent = S.trial.instruction;
+  bubble.hidden = false;
+  // time from the frame the instruction is painted
+  requestAnimationFrame(() => requestAnimationFrame(() => { S.tReveal = performance.now(); setCanMove(true); }));
+});
+
+// which way an object went: left / right / up / down (one slot) or not_one_slot
+const DIR_OF = { '0,-1': 'left', '0,1': 'right', '-1,0': 'up', '1,0': 'down' };
+const moveDirection = (from, to) => DIR_OF[`${Math.floor(to / 4) - Math.floor(from / 4)},${(to % 4) - (from % 4)}`] || 'not_one_slot';
+// error_type:   none | wrong_object | wrong_slot
+// error_detail: wrong_object -> hidden_competitor (the matching object in a slot with a back) | other_object
+//               wrong_slot   -> wrong_direction (one slot, wrong way) | not_one_slot
+function classify(t, id, from, to) {
+  if (id === t.target && to === t.to) return { error_type: 'none', error_detail: '' };
+  if (id === t.target) return { error_type: 'wrong_slot', error_detail: moveDirection(from, to) === 'not_one_slot' ? 'not_one_slot' : 'wrong_direction' };
+  return { error_type: 'wrong_object', error_detail: id === t.distractor ? 'hidden_competitor' : 'other_object' };
+}
+
+function commitMove(id, to) {
+  const t = S.trial, p = S.plan[S.part];
+  const rt = performance.now() - S.tReveal;
+  const from = S.pos[id];
+  S.pos[id] = to; setSelected(null); setCanMove(false); drawObjects();
+  const err = classify(t, id, from, to);
+  const moved = t.objects.find(o => o.id === id);
+  const rec = {
+    part: S.part + 1, condition: p.condition, item_set: p.set,
+    phase: S.phase, n: S.i + 1, trial_id: t.id, type: t.type, kind: t.kind, variant: t.variant,
+    instruction: t.instruction, target: t.target, correct_from: t.from, correct_to: t.to, correct_direction: t.dir,
+    moved: id, moved_name: moved.name,
+    moved_role: id === t.target ? 'target' : id === t.distractor ? 'hidden_competitor' : 'other',
+    moved_from: from, moved_to: to, moved_direction: moveDirection(from, to),
+    moved_from_closed: t.occluded.includes(from) ? 1 : 0, moved_to_closed: t.occluded.includes(to) ? 1 : 0,
+    correct: err.error_type === 'none' ? 1 : 0, error_type: err.error_type, error_detail: err.error_detail,
+    reveal_ms: Math.round(S.tReveal - S.tStart), rt_ms: Math.round(rt), attempt: S.attempt,
+  };
+  if (S.phase === 'practice') {
+    cur().practiceLog.push(rec);
+    if (rec.correct) {
+      flash('Correct!');
+      setTimeout(() => { S.attempt = 1; next(); }, 900);
+    } else {
+      setTimeout(() => practiceFeedback(err, t), 350);
+    }
+  } else {
+    cur().log.push(rec);
+    setTimeout(() => { stage.classList.add('objs-out'); bubble.hidden = true; }, 450);
+    setTimeout(next, 700);
+  }
+}
+function flash(msg) { toast.textContent = msg; toast.hidden = false; }
+
+function next() {
+  S.i++;
+  if (S.i < S.list.length) return startTrial();
+  if (S.phase === 'practice') return showCard('ready');
+  cur().finished = new Date().toISOString();
+  S.part++;
+  if (S.part < S.plan.length) partIntro(); else finish();
+}
+
+const CHIP = '<span class="grey-chip"></span>';
+function practiceFeedback(err, t) {
+  const msg = {
+    hidden_competitor: isDir()
+      ? `That object is in a slot with a ${CHIP} wooden back, so the Director can't see it. He must mean one he can see.`
+      : `That object is in a slot with a ${CHIP} wooden back. The instructions only refer to objects in open slots, so ignore the objects in slots with a wooden back.`,
+    other_object: isDir() ? `That isn't the object the Director asked for.` : `That isn't the object the instruction asked for.`,
+    wrong_direction: `Right object, but it should go ${PHRASE[t.dir]}. Left and right mean <b class="red">your left and right</b>.`,
+    not_one_slot: `Right object, but every move is exactly one slot. It should go ${PHRASE[t.dir]}.`,
+  }[err.error_detail];
+  card.innerHTML = `
+    <p class="eyebrow fb-bad">Not quite</p>
+    <h2>Let's try that one again</h2>
+    <p>${msg}</p>
+    <div class="row"><span></span><button class="btn" id="retry" type="button">Try again</button></div>`;
+  overlay.hidden = false;
+  $('retry').onclick = () => { overlay.hidden = true; S.attempt++; startTrial(); };
+  $('retry').focus();
+}
+
+// ---------- instruction cards ----------
+const MOVE_RULES = `
+  <li>Drag the object to its new slot, or tap the object and then tap the empty slot.</li>
+  <li>Every move is one slot: left, right, up or down. Left and right mean <b class="red">your left and right</b>.</li>
+  <li>Work as quickly and as accurately as you can.</li>`;
+const INTRO = {
+  director: `
+    <p>A <b>Director</b> stands on the other side of the shelves. He will ask you to move objects around.</p>
+    <ul>
+      <li>Some slots have a ${CHIP} wooden back. You can see the objects inside them, but the Director can't.</li>
+      <li>Click the speech button next to the Director to see his instruction.</li>
+      ${MOVE_RULES}
+    </ul>`,
+  nodirector: `
+    <p>In this part there is <b>no Director</b>. You will get instructions to move objects around the shelves.</p>
+    <ul>
+      <li>Click the speech button to see the instruction.</li>
+      <li>The instructions only refer to objects in open slots. They never refer to objects in slots with a ${CHIP} wooden back, so ignore those objects.</li>
+      ${MOVE_RULES}
+    </ul>`,
+};
+const REMINDER = {
+  director: 'Keep in mind which objects the Director can see.',
+  nodirector: 'Remember to ignore the objects in slots with a wooden back.',
+};
+
+function showCard(which) {
+  overlay.hidden = false; hud.hidden = true; bubble.hidden = true; toast.hidden = true;
+  if (which === 'welcome') {
+    card.innerHTML = `
+      <h1>Welcome</h1>
+      <p>This study has <b>two parts</b>. In both parts you will see a set of shelves and get instructions to move the objects on them.</p>
+      <p>Each part starts with a short practice. You'll get the instructions for each part just before it starts.</p>
+      <div class="row"><span></span><button class="btn" id="go" type="button">Start</button></div>`;
+    $('go').onclick = begin;
+  } else if (which === 'part') {
+    const lead = S.part === 0 ? '' : '<p><b>Part 1 is complete – well done!</b> In this part the setup is different.</p>';
+    card.innerHTML = `
+      <h2>Part ${S.part + 1} of ${S.plan.length}</h2>
+      ${lead}${INTRO[cond()]}
+      <p>First, a short practice with ${DATA.practice[cond()].length} rounds.</p>
+      <div class="row"><span></span><button class="btn" id="go" type="button">Start practice</button></div>`;
+    $('go').onclick = () => {
+      S.phase = 'practice'; S.list = DATA.practice[cond()]; S.i = 0; S.attempt = 1;
+      overlay.hidden = true; startTrial();
+    };
+  } else if (which === 'ready') {
+    card.innerHTML = `
+      <h2>Practice complete!</h2>
+      <p>Now the real game begins: ${MAIN_ROUNDS} rounds. You won't be told whether you got each one right. ${REMINDER[cond()]} Work as quickly and as accurately as you can.</p>
+      <div class="row"><span></span><button class="btn" id="go" type="button">Start the game</button></div>`;
+    $('go').onclick = () => {
+      S.phase = 'main'; S.list = orderMain(DATA.sets[S.plan[S.part].set]); S.i = 0; S.attempt = 1;
+      cur().started = new Date().toISOString();
+      overlay.hidden = true; startTrial();
+    };
+  }
+  card.scrollTop = 0;
+  $('go').focus({ preventScroll: true });
+}
+
+// random order per participant: first two rounds are control, never 3 critical in a row
+function orderMain(set) {
+  for (let k = 0; k < 5000; k++) {
+    const a = [...set];
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    if (a[0].type === 'critical' || a[1].type === 'critical') continue;
+    let run = 0, ok = true;
+    for (const t of a) { run = t.type === 'critical' ? run + 1 : 0; if (run > 2) { ok = false; break; } }
+    if (ok) return a;
+  }
+  return [...set];
+}
+
+// ---------- group assignment and the two parts ----------
+async function getGroup() {
+  const g = parseInt(URLP.get('GROUP'), 10);
+  if (g >= 1 && g <= 4) return { group: g, source: 'url' };
+  if (CONFIG.DATAPIPE_EXPERIMENT_ID && CONFIG.USE_DATAPIPE_CONDITIONS) {
+    try {
+      const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch('https://pipe.jspsych.org/api/condition/', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: '*/*' },
+        body: JSON.stringify({ experimentID: CONFIG.DATAPIPE_EXPERIMENT_ID }), signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const j = await r.json();
+      if (r.ok && Number.isInteger(j.condition)) return { group: (j.condition % 4) + 1, source: 'datapipe' };
+    } catch (e) { /* fall through to random */ }
+  }
+  return { group: 1 + Math.floor(Math.random() * 4), source: 'random' };
+}
+async function begin() {
+  const b = $('go'); b.disabled = true; b.textContent = 'Loading…';
+  S.assignment = await getGroup();
+  S.plan = GROUPS[S.assignment.group].map((p, i) => ({ part: i + 1, ...p }));
+  S.order = S.plan[0].condition + '_first';
+  S.startedAt = new Date().toISOString();
+  S.part = 0; S.parts = [];
+  partIntro();
+}
+function partIntro() {
+  const p = S.plan[S.part];
+  S.parts[S.part] = { ...p, practiceLog: [], log: [], started: '', finished: '' };
+  setScene(p.condition);
+  S.phase = 'intro';
+  preview(DATA.practice[p.condition][0]);
+  showCard('part');
+}
+
+// ---------- data ----------
+function stats(xs) {
+  const n = xs.length;
+  if (!n) return { n, mean: NaN, sd: NaN };
+  const mean = xs.reduce((a, b) => a + b, 0) / n;
+  const sd = n > 1 ? Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : NaN;
+  return { n, mean, sd };
+}
+function summarize(log) {
+  const out = {};
+  for (const type of ['control', 'critical']) {
+    const rows = log.filter(r => r.type === type);
+    const correct = rows.filter(r => r.correct);
+    out[type] = {
+      trials: rows.length,
+      errors: rows.length - correct.length,
+      wrongObject: rows.filter(r => r.error_type === 'wrong_object').length,
+      wrongSlot: rows.filter(r => r.error_type === 'wrong_slot').length,
+      hiddenCompetitor: rows.filter(r => r.error_detail === 'hidden_competitor').length,
+      rt: stats(correct.map(r => r.rt_ms)),      // correct rounds only
+      rtAll: stats(rows.map(r => r.rt_ms)),      // all rounds
+    };
+  }
+  return out;
+}
+const r1 = v => Number.isFinite(v) ? v.toFixed(1) : '';
+const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+const csv = rows => rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
+
+const ID_HEAD = ['prolific_pid', 'study_id', 'session_id', 'group', 'order', 'assignment_source'];
+const idCells = () => [PROLIFIC.pid, PROLIFIC.study, PROLIFIC.session, S.assignment.group, S.order, S.assignment.source];
+// one summary row per part (condition)
+const SUMMARY_HEAD = [...ID_HEAD, 'part', 'condition', 'item_set', 'consent', 'consent_time', 'practice_attempts', 'started', 'finished',
+  'errors_control', 'errors_critical',
+  'mean_rt_control_ms', 'sd_rt_control_ms', 'mean_rt_critical_ms', 'sd_rt_critical_ms',
+  'n_correct_control', 'n_correct_critical',
+  'wrong_object_control', 'wrong_slot_control', 'wrong_object_critical', 'wrong_slot_critical', 'hidden_competitor_critical',
+  'mean_rt_control_all_ms', 'sd_rt_control_all_ms', 'mean_rt_critical_all_ms', 'sd_rt_critical_all_ms'];
+// one row per move, practice attempts included
+const TRIAL_COLS = ['part', 'condition', 'item_set', 'phase', 'n', 'trial_id', 'type', 'kind', 'variant', 'instruction', 'target',
+  'correct_from', 'correct_to', 'correct_direction', 'moved', 'moved_name', 'moved_role', 'moved_from', 'moved_to',
+  'moved_direction', 'moved_from_closed', 'moved_to_closed', 'correct', 'error_type', 'error_detail', 'reveal_ms', 'rt_ms', 'attempt'];
+
+function buildData() {
+  const summaryRows = S.parts.map((p, i) => {
+    const sm = summarize(p.log), c = sm.control, k = sm.critical;
+    const attempts = DATA.practice[p.condition].map(t => p.practiceLog.filter(r => r.trial_id === t.id).length).join('|');
+    return [...idCells(), i + 1, p.condition, p.set, 'yes', S.consentTime, attempts, p.started, p.finished,
+      c.errors, k.errors,
+      r1(c.rt.mean), r1(c.rt.sd), r1(k.rt.mean), r1(k.rt.sd),
+      c.rt.n, k.rt.n,
+      c.wrongObject, c.wrongSlot, k.wrongObject, k.wrongSlot, k.hiddenCompetitor,
+      r1(c.rtAll.mean), r1(c.rtAll.sd), r1(k.rtAll.mean), r1(k.rtAll.sd)];
+  });
+  const trialRows = S.parts.flatMap(p => [...p.practiceLog, ...p.log].map(r => [...idCells(), ...TRIAL_COLS.map(h => r[h])]));
+  return {
+    summaryCsv: csv([SUMMARY_HEAD, ...summaryRows]),
+    trialCsv: csv([[...ID_HEAD, ...TRIAL_COLS], ...trialRows]),
+  };
+}
+
+// ---------- end of game: thank-you + debrief, upload, return to Prolific ----------
+let OUT = null;
+function finish() {
+  S.phase = 'done';
+  S.finishedAt = new Date().toISOString();
+  OUT = buildData();
+  setCanMove(false); ask.disabled = true; ask.classList.remove('waiting');
+  hud.hidden = true; bubble.hidden = true; toast.hidden = true;
+  const scoreRows = S.parts.map((p, i) => {
+    const e = p.log.filter(r => !r.correct).length;
+    return `<dt>Part ${i + 1} · ${p.condition === 'director' ? 'with the Director' : 'without the Director'}</dt>` +
+      `<dd>${e} ${e === 1 ? 'error' : 'errors'} out of ${p.log.length}</dd>`;
+  }).join('');
+  card.innerHTML = `
+    <h2>Finished – thank you!</h2>
+    <div class="score"><h3>Your errors</h3><dl>${scoreRows}</dl></div>
+    <div class="debrief">
+      <p><b>About this study.</b> We are studying how people use another person's point of view. In one part, a Director who could not see the objects in slots with a wooden back gave the instructions. In the other part there was no Director, and you followed a rule to ignore the objects in those slots. In some rounds the instruction fitted two objects, one of them in a slot with a wooden back. Comparing the two parts shows whether taking another person's perspective works differently from following a rule that leads to the same answer.</p>
+      <p>Please don't share details of the study with others who might take part. If you have questions, email zuzanna.tymieniecka@klu.org.</p>
+      <p class="cite">The task is adapted from Dumontheil, I., Apperly, I. A., &amp; Blakemore, S.-J. (2010). Online usage of theory of mind continues to develop in late adolescence. <i>Developmental Science</i>, 13(2), 331–338. In this version the instructions appear as text instead of audio.</p>
+    </div>
+    <p class="status" id="saveStatus" role="status" hidden></p>
+    <div class="row end">
+      <button class="btn quiet" id="retrySave" type="button" hidden>Try saving again</button>
+      <a class="btn" id="returnBtn" hidden>Return to Prolific</a>
+    </div>`;
+  overlay.hidden = false;
+  card.scrollTop = 0;
+  $('retrySave').onclick = upload;
+  if (CONFIG.DATAPIPE_EXPERIMENT_ID) upload(); else showReturn();
+}
+function setStatus(text, cls) {
+  const el = $('saveStatus'); el.hidden = false; el.textContent = text; el.className = 'status ' + (cls || '');
+}
+function showReturn() {
+  if (!CONFIG.PROLIFIC_COMPLETION_URL) return;
+  const a = $('returnBtn'); a.href = CONFIG.PROLIFIC_COMPLETION_URL; a.hidden = false;
+}
+function postFile(filename, data) {
+  return fetch('https://pipe.jspsych.org/api/data/', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: '*/*' },
+    body: JSON.stringify({ experimentID: CONFIG.DATAPIPE_EXPERIMENT_ID, filename, data }),
+  }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); });
+}
+const uploaded = {};
+async function upload() {
+  $('retrySave').hidden = true;
+  setStatus('Saving your responses… please don’t close this page.');
+  // file names use Prolific's session ID when present, plus the start time
+  const base = 'director_' + (PROLIFIC.session ? PROLIFIC.session.replace(/[^\w-]+/g, '_') + '_' : '') + S.startedAt.replace(/[:.]/g, '-');
+  const files = { [base + '_summary.csv']: OUT.summaryCsv, [base + '_trials.csv']: OUT.trialCsv };
+  try {
+    for (const [name, text] of Object.entries(files)) if (!uploaded[name]) { await postFile(name, text); uploaded[name] = true; }
+    setStatus('Your responses have been saved. ✓', 'ok');
+    showReturn();
+  } catch (e) {
+    setStatus('Saving failed (' + e.message + '). Check your internet connection and try again.', 'bad');
+    $('retrySave').hidden = false;
+  }
+}
+
+// ---------- information & consent ----------
+// CONSENT TEXT – check this wording against what your ethics committee approved.
+const CONSENT_HTML = `
+  <p><b>The Shelf Game</b> · Zuzanna Tymieniecka, Kühne Logistics University (KLU), Hamburg · zuzanna.tymieniecka@klu.org</p>
+  <p>You will play a short game in two parts in which you move objects on a set of shelves (about 10 minutes). Taking part is voluntary, and you can stop at any time by closing this page.</p>
+  <p>We record your answers and response times in the game and your Prolific ID, study ID and session ID – nothing that directly identifies you. The data are sent to the research team’s secure storage and used only for research. Your Prolific ID is removed before analysis; the anonymised data are kept for 10 years and may be published in an open research repository.</p>
+  <p>To have your data deleted, email the researcher with your Prolific ID within 30 days. You also have the right to access and correct your data and to complain to a data protection authority. Legal basis: your consent (Art. 6(1)(a) GDPR). Data controller: Kühne Logistics University gGmbH, Großer Grasbrook 17, 20457 Hamburg, Germany.</p>`;
+
+function showConsent() {
+  overlay.hidden = false; hud.hidden = true; bubble.hidden = true; toast.hidden = true;
+  card.innerHTML = `
+    <h2>Information and consent</h2>
+    <div class="consent-text">${CONSENT_HTML}</div>
+    <label class="check" for="consentBox"><input type="checkbox" id="consentBox"> I have read and understood the information above, and I agree to take part in this study.</label>
+    <div class="row end">
+      <button class="btn" id="consentYes" type="button" disabled>I agree – continue</button>
+      <button class="btn quiet" id="consentNo" type="button">I do not agree</button>
+    </div>`;
+  card.scrollTop = 0;
+  $('consentBox').onchange = () => { $('consentYes').disabled = !$('consentBox').checked; };
+  $('consentYes').onclick = () => {
+    if (!$('consentBox').checked) return;
+    S.consentTime = new Date().toISOString(); // saved with the data (no group is drawn before this)
+    showCard('welcome');
+  };
+  $('consentNo').onclick = showDecline;
+}
+function showDecline() {
+  card.innerHTML = `
+    <h2>You are not taking part</h2>
+    <p>Thank you for your time. You have chosen not to take part, and no data have been saved.</p>
+    <p>Please go back to Prolific and <b>return your submission</b> by clicking <b>“Stop without completing”</b>, so your place becomes available to someone else.</p>
+    <div class="row end">
+      <a class="btn" id="declineReturn" hidden>Return to Prolific</a>
+      <button class="btn quiet" id="declineBack" type="button">Back to the information</button>
+    </div>`;
+  if (CONFIG.PROLIFIC_NO_CONSENT_URL) { const a = $('declineReturn'); a.href = CONFIG.PROLIFIC_NO_CONSENT_URL; a.hidden = false; }
+  $('declineBack').onclick = showConsent;
+}
+
+// first picture behind the consent card: shelves only, no condition shown yet
+setScene('none');
+preview(DATA.practice.director[0]);
+showConsent();
+</script>
+</body>
+</html>
