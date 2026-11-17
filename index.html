@@ -621,15 +621,15 @@ const INTRO = {
   director: `
     <p>A <b>Director</b> stands on the other side of the shelves. He will ask you to move objects around.</p>
     <ul>
-      <li>Some slots have a ${CHIP} wooden back. You can see the objects inside them, but the Director can't.</li>
+      <li><b>Some slots have a ${CHIP} wooden back. You can see the objects inside them, but the Director can't.</b></li>
       <li>Click the speech button next to the Director to see his instruction.</li>
       ${MOVE_RULES}
     </ul>`,
   nodirector: `
-    <p>In this part there is <b>no Director</b>. You will get instructions to move objects around the shelves.</p>
+    <p>You will get instructions to move objects around the shelves.</p>
     <ul>
       <li>Click the speech button to see the instruction.</li>
-      <li>The instructions only refer to objects in open slots. They never refer to objects in slots with a ${CHIP} wooden back, so ignore those objects.</li>
+      <li><b>The instructions only refer to objects in open slots. They never refer to objects in slots with a ${CHIP} wooden back, so ignore those objects.</b></li>
       ${MOVE_RULES}
     </ul>`,
 };
@@ -777,9 +777,11 @@ function buildData() {
       r1(c.rtAll.mean), r1(c.rtAll.sd), r1(k.rtAll.mean), r1(k.rtAll.sd)];
   });
   const trialRows = S.parts.flatMap(p => [...p.practiceLog, ...p.log].map(r => [...idCells(), ...TRIAL_COLS.map(h => r[h])]));
+  // DataPipe's default validation requires a "trial_type" column in every file,
+  // so both files start with one (summary rows / one row per move).
   return {
-    summaryCsv: csv([SUMMARY_HEAD, ...summaryRows]),
-    trialCsv: csv([[...ID_HEAD, ...TRIAL_COLS], ...trialRows]),
+    summaryCsv: csv([['trial_type', ...SUMMARY_HEAD], ...summaryRows.map(r => ['summary', ...r])]),
+    trialCsv: csv([['trial_type', ...ID_HEAD, ...TRIAL_COLS], ...trialRows.map(r => ['move', ...r])]),
   };
 }
 
