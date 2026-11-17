@@ -342,11 +342,12 @@ a.btn { text-decoration: none; display: inline-block; }
 //   group 2: part 1 director   + set B, part 2 nodirector + set A
 //   group 3: part 1 nodirector + set B, part 2 director   + set A
 //   group 4: part 1 nodirector + set A, part 2 director   + set B
-// How the group is chosen (first that applies):
-//   1. a GROUP=1..4 parameter in the link (for testing or top-up studies);
-//   2. DataPipe's condition assignment (turn it on with 4 conditions), which
-//      hands out 0,1,2,3,0,1,2,3,... in arrival order;
-//   3. otherwise (or if DataPipe can't be reached) a random group.
+// How the group is chosen:
+//   - normally at random: each participant has a 1 in 4 chance of each group,
+//     so a 50/50 chance of starting with or without the Director;
+//   - a GROUP=1..4 parameter in the link overrides this (for testing);
+//   - only if USE_DATAPIPE_CONDITIONS is set to true below: DataPipe's condition
+//     assignment instead (balanced rotation; needs 4 conditions in DataPipe).
 // Within each part the 30 rounds are shuffled for every participant: the first
 // two are always control rounds and there are never 3 critical rounds in a row.
 // ===========================================================================
@@ -359,9 +360,10 @@ const CONFIG = {
   // for this study, not the maze one. When set, every finished session is
   // uploaded as two CSV files (summary + trials). Leave '' to skip.
   DATAPIPE_EXPERIMENT_ID: 'L0bebEhftKPg',
-  // Ask DataPipe for a balanced group (needs condition assignment turned on in
-  // the DataPipe dashboard with 4 conditions).
-  USE_DATAPIPE_CONDITIONS: true,
+  // false = every participant gets a random group (current setting).
+  // true  = ask DataPipe for a balanced rotation instead (needs condition
+  //         assignment turned on in the DataPipe dashboard with 4 conditions).
+  USE_DATAPIPE_CONDITIONS: false,
   // Completion URL copied from this study's Prolific settings (ends in ?cc=CODE).
   PROLIFIC_COMPLETION_URL: 'https://app.prolific.com/submissions/complete?cc=C18184NI',
   // Optional: completion URL for people who do NOT consent ("Request a return").
@@ -702,6 +704,10 @@ function orderMain(set) {
 }
 
 // ---------- group assignment and the two parts ----------
+// DataPipe hands out conditions 0,1,2,3,0,1,... in arrival order. Mapping them to groups
+// 1,3,2,4 makes the starting part alternate with every session (Director first, then
+// No-Director first, ...), and each block of 4 sessions still covers all four groups.
+const GROUP_FROM_CONDITION = [1, 3, 2, 4];
 async function getGroup() {
   const g = parseInt(URLP.get('GROUP'), 10);
   if (g >= 1 && g <= 4) return { group: g, source: 'url' };
@@ -714,7 +720,7 @@ async function getGroup() {
       });
       clearTimeout(timer);
       const j = await r.json();
-      if (r.ok && Number.isInteger(j.condition)) return { group: (j.condition % 4) + 1, source: 'datapipe' };
+      if (r.ok && Number.isInteger(j.condition)) return { group: GROUP_FROM_CONDITION[j.condition % 4], source: 'datapipe' };
     } catch (e) { /* fall through to random */ }
   }
   return { group: 1 + Math.floor(Math.random() * 4), source: 'random' };
